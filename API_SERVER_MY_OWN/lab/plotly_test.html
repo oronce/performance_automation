@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Plotly Lab - Test Charts</title>
+    <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #333;
+        }
+        .chart-box {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .controls {
+            margin: 10px 0;
+        }
+        button {
+            padding: 8px 16px;
+            margin: 5px;
+            cursor: pointer;
+            border: none;
+            background: #1976d2;
+            color: white;
+            border-radius: 4px;
+        }
+        button:hover {
+            background: #1565c0;
+        }
+        #dataDisplay {
+            background: #f9f9f9;
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+        .field-tag {
+            display: inline-block;
+            padding: 6px 12px;
+            background: #e3f2fd;
+            border: 2px solid #1976d2;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.2s;
+            user-select: none;
+        }
+        .field-tag:hover {
+            background: #bbdefb;
+            transform: translateY(-2px);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        .field-tag.active {
+            background: #1976d2;
+            color: white;
+        }
+        .field-tag.disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+        .drop-zone {
+            min-height: 50px;
+            padding: 10px;
+            background: #fafafa;
+            border: 2px dashed #ccc;
+            border-radius: 4px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+        .drop-zone:empty::before {
+            content: 'Click fields above to add';
+            color: #999;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 Plotly Lab - Chart Experiments</h1>
+
+        <div class="controls">
+            <button onclick="testGroupByController()">Test with Sample Data</button>
+            <button onclick="fetchRealData()">Fetch Real Data from API</button>
+        </div>
+
+        <div class="chart-box">
+            <h3>Chart Configuration (Pivot-Style)</h3>
+
+            <!-- Available Fields -->
+            <div style="margin-bottom: 20px;">
+                <label style="font-weight: bold; display: block; margin-bottom: 8px;">📦 Available Fields:</label>
+                <div id="availableFields" style="display: flex; gap: 8px; flex-wrap: wrap; padding: 10px; background: #f9f9f9; border-radius: 4px;">
+                    <span class="field-tag available" data-field="date">Date</span>
+                    <span class="field-tag available" data-field="time">Time</span>
+                    <span class="field-tag available" data-field="controller_name">Controller</span>
+                </div>
+                <small style="color: #666; display: block; margin-top: 4px;">Click a field to add it to X-Axis or Legend</small>
+            </div>
+
+            <!-- Drop Zones -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                <!-- X-Axis Drop Zone -->
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 8px;">📊 X-Axis:</label>
+                    <div id="xAxisZone" class="drop-zone">
+                        <span class="field-tag active" data-field="time">Time</span>
+                    </div>
+                    <small style="color: #666;">Select field(s) for X-axis</small>
+                </div>
+
+                <!-- Legend/Group By Drop Zone -->
+                <div>
+                    <label style="font-weight: bold; display: block; margin-bottom: 8px;">🏷️ Legend (Group By):</label>
+                    <div id="legendZone" class="drop-zone">
+                        <span class="field-tag active" data-field="date">Date</span>
+                        <span class="field-tag active" data-field="controller_name">Controller</span>
+                    </div>
+                    <small style="color: #666;">Select field(s) to create separate lines</small>
+                </div>
+            </div>
+
+            <!-- KPI Selection -->
+            <div style="margin-bottom: 15px;">
+                <label for="kpiSelect" style="font-weight: bold; margin-right: 8px;">📈 KPI:</label>
+                <select id="kpiSelect" style="padding: 5px; border-radius: 4px;">
+                    <option value="CSSR_HUAWEI">CSSR_HUAWEI</option>
+                </select>
+            </div>
+
+            <!-- Render Button -->
+            <div>
+                <button onclick="renderPivotChart()" style="padding: 8px 20px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold; font-size: 14px;">
+                    📊 Render Chart
+                </button>
+            </div>
+        </div>
+
+        <div class="chart-box">
+            <h3>Interactive Chart</h3>
+            <div id="chart1"></div>
+        </div>
+
+        <div class="chart-box">
+            <h3>Data Preview</h3>
+            <div id="dataDisplay"></div>
+        </div>
+    </div>
+
+    <script>
+        // Sample data with controller aggregation - 3 days, 24 hours each, 2 controllers
+        // Matches real API response format when aggregation_level = 'controller_name'
+        const sampleData = [
+            // 2025-11-20 - PKMBSC01
+            {"date":"2025-11-20","time":"00:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.79},
+            {"date":"2025-11-20","time":"01:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.75},
+            {"date":"2025-11-20","time":"02:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.87},
+            {"date":"2025-11-20","time":"03:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.77},
+            {"date":"2025-11-20","time":"04:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.82},
+            {"date":"2025-11-20","time":"05:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.82},
+            {"date":"2025-11-20","time":"06:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.65},
+            {"date":"2025-11-20","time":"07:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.61},
+            {"date":"2025-11-20","time":"08:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.49},
+            {"date":"2025-11-20","time":"09:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.58},
+            {"date":"2025-11-20","time":"10:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.22},
+            {"date":"2025-11-20","time":"11:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.72},
+            {"date":"2025-11-20","time":"12:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.71},
+            {"date":"2025-11-20","time":"13:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.70},
+            {"date":"2025-11-20","time":"14:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.69},
+            {"date":"2025-11-20","time":"15:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.56},
+            {"date":"2025-11-20","time":"16:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.72},
+            {"date":"2025-11-20","time":"17:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.72},
+            {"date":"2025-11-20","time":"18:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.54},
+            {"date":"2025-11-20","time":"19:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.27},
+            {"date":"2025-11-20","time":"20:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.34},
+            {"date":"2025-11-20","time":"21:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.31},
+            {"date":"2025-11-20","time":"22:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.53},
+            {"date":"2025-11-20","time":"23:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.69},
+            // 2025-11-20 - PKMBSC03
+            {"date":"2025-11-20","time":"00:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.85},
+            {"date":"2025-11-20","time":"01:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.80},
+            {"date":"2025-11-20","time":"02:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.92},
+            {"date":"2025-11-20","time":"03:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.82},
+            {"date":"2025-11-20","time":"04:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.88},
+            {"date":"2025-11-20","time":"05:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.87},
+            {"date":"2025-11-20","time":"06:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.70},
+            {"date":"2025-11-20","time":"07:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.66},
+            {"date":"2025-11-20","time":"08:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.54},
+            {"date":"2025-11-20","time":"09:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.63},
+            {"date":"2025-11-20","time":"10:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.28},
+            {"date":"2025-11-20","time":"11:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.77},
+            {"date":"2025-11-20","time":"12:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.76},
+            {"date":"2025-11-20","time":"13:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.75},
+            {"date":"2025-11-20","time":"14:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.74},
+            {"date":"2025-11-20","time":"15:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.61},
+            {"date":"2025-11-20","time":"16:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.77},
+            {"date":"2025-11-20","time":"17:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.77},
+            {"date":"2025-11-20","time":"18:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.59},
+            {"date":"2025-11-20","time":"19:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.32},
+            {"date":"2025-11-20","time":"20:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.39},
+            {"date":"2025-11-20","time":"21:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.36},
+            {"date":"2025-11-20","time":"22:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.58},
+            {"date":"2025-11-20","time":"23:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.74},
+            // 2025-11-21 - PKMBSC01
+            {"date":"2025-11-21","time":"00:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.65},
+            {"date":"2025-11-21","time":"01:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.50},
+            {"date":"2025-11-21","time":"02:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.45},
+            {"date":"2025-11-21","time":"03:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.40},
+            {"date":"2025-11-21","time":"04:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.37},
+            {"date":"2025-11-21","time":"05:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.32},
+            {"date":"2025-11-21","time":"06:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.25},
+            {"date":"2025-11-21","time":"07:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.30},
+            {"date":"2025-11-21","time":"08:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.55},
+            {"date":"2025-11-21","time":"09:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.60},
+            {"date":"2025-11-21","time":"10:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.62},
+            {"date":"2025-11-21","time":"11:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.68},
+            {"date":"2025-11-21","time":"12:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.72},
+            {"date":"2025-11-21","time":"13:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.74},
+            {"date":"2025-11-21","time":"14:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.80},
+            {"date":"2025-11-21","time":"15:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.83},
+            {"date":"2025-11-21","time":"16:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.88},
+            {"date":"2025-11-21","time":"17:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.92},
+            {"date":"2025-11-21","time":"18:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.93},
+            {"date":"2025-11-21","time":"19:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.96},
+            {"date":"2025-11-21","time":"20:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.98},
+            {"date":"2025-11-21","time":"21:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.95},
+            {"date":"2025-11-21","time":"22:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.90},
+            {"date":"2025-11-21","time":"23:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.85},
+            // 2025-11-21 - PKMBSC03
+            {"date":"2025-11-21","time":"00:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.70},
+            {"date":"2025-11-21","time":"01:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.55},
+            {"date":"2025-11-21","time":"02:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.50},
+            {"date":"2025-11-21","time":"03:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.45},
+            {"date":"2025-11-21","time":"04:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.42},
+            {"date":"2025-11-21","time":"05:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.37},
+            {"date":"2025-11-21","time":"06:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.30},
+            {"date":"2025-11-21","time":"07:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.35},
+            {"date":"2025-11-21","time":"08:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.60},
+            {"date":"2025-11-21","time":"09:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.65},
+            {"date":"2025-11-21","time":"10:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.67},
+            {"date":"2025-11-21","time":"11:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.73},
+            {"date":"2025-11-21","time":"12:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.77},
+            {"date":"2025-11-21","time":"13:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.79},
+            {"date":"2025-11-21","time":"14:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.85},
+            {"date":"2025-11-21","time":"15:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.88},
+            {"date":"2025-11-21","time":"16:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.93},
+            {"date":"2025-11-21","time":"17:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.97},
+            {"date":"2025-11-21","time":"18:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.98},
+            {"date":"2025-11-21","time":"19:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.99},
+            {"date":"2025-11-21","time":"20:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.99},
+            {"date":"2025-11-21","time":"21:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.96},
+            {"date":"2025-11-21","time":"22:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.92},
+            {"date":"2025-11-21","time":"23:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.88},
+            // 2025-11-22 - PKMBSC01
+            {"date":"2025-11-22","time":"00:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.78},
+            {"date":"2025-11-22","time":"01:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.73},
+            {"date":"2025-11-22","time":"02:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.68},
+            {"date":"2025-11-22","time":"03:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.63},
+            {"date":"2025-11-22","time":"04:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.58},
+            {"date":"2025-11-22","time":"05:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.53},
+            {"date":"2025-11-22","time":"06:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.48},
+            {"date":"2025-11-22","time":"07:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.52},
+            {"date":"2025-11-22","time":"08:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.65},
+            {"date":"2025-11-22","time":"09:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.70},
+            {"date":"2025-11-22","time":"10:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.75},
+            {"date":"2025-11-22","time":"11:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.80},
+            {"date":"2025-11-22","time":"12:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.82},
+            {"date":"2025-11-22","time":"13:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.85},
+            {"date":"2025-11-22","time":"14:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.87},
+            {"date":"2025-11-22","time":"15:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.90},
+            {"date":"2025-11-22","time":"16:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.92},
+            {"date":"2025-11-22","time":"17:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.94},
+            {"date":"2025-11-22","time":"18:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.91},
+            {"date":"2025-11-22","time":"19:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.88},
+            {"date":"2025-11-22","time":"20:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.85},
+            {"date":"2025-11-22","time":"21:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.82},
+            {"date":"2025-11-22","time":"22:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.79},
+            {"date":"2025-11-22","time":"23:00:00","controller_name":"PKMBSC01","CSSR_HUAWEI":99.76},
+            // 2025-11-22 - PKMBSC03
+            {"date":"2025-11-22","time":"00:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.83},
+            {"date":"2025-11-22","time":"01:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.78},
+            {"date":"2025-11-22","time":"02:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.73},
+            {"date":"2025-11-22","time":"03:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.68},
+            {"date":"2025-11-22","time":"04:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.63},
+            {"date":"2025-11-22","time":"05:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.58},
+            {"date":"2025-11-22","time":"06:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.53},
+            {"date":"2025-11-22","time":"07:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.57},
+            {"date":"2025-11-22","time":"08:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.70},
+            {"date":"2025-11-22","time":"09:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.75},
+            {"date":"2025-11-22","time":"10:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.80},
+            {"date":"2025-11-22","time":"11:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.85},
+            {"date":"2025-11-22","time":"12:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.87},
+            {"date":"2025-11-22","time":"13:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.90},
+            {"date":"2025-11-22","time":"14:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.92},
+            {"date":"2025-11-22","time":"15:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.95},
+            {"date":"2025-11-22","time":"16:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.97},
+            {"date":"2025-11-22","time":"17:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.99},
+            {"date":"2025-11-22","time":"18:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.96},
+            {"date":"2025-11-22","time":"19:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.93},
+            {"date":"2025-11-22","time":"20:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.90},
+            {"date":"2025-11-22","time":"21:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.87},
+            {"date":"2025-11-22","time":"22:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.84},
+            {"date":"2025-11-22","time":"23:00:00","controller_name":"PKMBSC03","CSSR_HUAWEI":99.81}
+        ];
+
+        // Store current data for re-rendering
+        let currentData = sampleData;
+
+        function displayData(data) {
+            document.getElementById('dataDisplay').textContent = JSON.stringify(data, null, 2);
+        }
+
+        /**
+         * Flexible chart rendering function
+         * @param {Array} data - Array of data objects
+         * @param {Object} options - Chart configuration options
+         * @param {string} options.xAxis - X-axis field: 'time', 'date', or 'datetime'
+         * @param {string|Array} options.groupBy - Group by field(s): 'none', 'controller_name', 'date', or ['date', 'controller_name']
+         * @param {string} options.kpi - KPI field name (e.g., 'CSSR_HUAWEI')
+         * @param {string} options.title - Chart title
+         */
+        function createFlexibleChart(data, options) {
+            const { xAxis = 'time', groupBy = 'none', kpi = 'CSSR_HUAWEI', title = 'Chart' } = options;
+
+            // Determine X-axis values based on selection
+            const getXValue = (row) => {
+                if (xAxis === 'datetime') {
+                    return `${row.date} ${row.time}`;
+                } else if (xAxis === 'date') {
+                    return row.date;
+                } else {
+                    return row.time;
+                }
+            };
+
+            // Determine grouping key based on selection
+            const getGroupKey = (row) => {
+                if (groupBy === 'none') {
+                    return 'All Data'; // Single trace for network level
+                }
+
+                // Handle array of fields (e.g., ['date', 'controller_name'])
+                if (Array.isArray(groupBy)) {
+                    return groupBy.map(field => row[field]).join(' - ');
+                }
+
+                // Handle single field
+                if (groupBy.includes('+')) {
+                    // Handle compound grouping like 'date+controller_name'
+                    const fields = groupBy.split('+');
+                    return fields.map(field => row[field.trim()]).join(' - ');
+                }
+
+                return row[groupBy];
+            };
+
+            // Group data
+            const grouped = {};
+            data.forEach(row => {
+                const key = getGroupKey(row);
+                if (!grouped[key]) {
+                    grouped[key] = { x: [], y: [] };
+                }
+                grouped[key].x.push(getXValue(row));
+                grouped[key].y.push(row[kpi]);
+            });
+
+            // Create traces
+            const traces = Object.entries(grouped).map(([key, v]) => ({
+                x: v.x,
+                y: v.y,
+                mode: 'lines+markers',
+                name: key,
+                type: 'scatter',
+                line: { width: 2 },
+                marker: { size: 6 }
+            }));
+
+            // Create layout
+            const xAxisLabel = xAxis === 'datetime' ? 'Date & Time' :
+                              xAxis === 'date' ? 'Date' : 'Time of Day';
+
+            const layout = {
+                title: title,
+                xaxis: { title: xAxisLabel, tickangle: -45 },
+                yaxis: { title: `${kpi} (%)` },
+                hovermode: 'x unified',
+                showlegend: true
+            };
+
+            // Render chart
+            Plotly.newPlot('chart1', traces, layout, { responsive: true });
+
+            console.log(`Chart rendered: ${traces.length} traces, ${data.length} data points`);
+            return { traces, layout };
+        }
+
+        /**
+         * Pivot-Style UI: Initialize field tags with click handlers
+         */
+        function initializePivotUI() {
+            // Handle available field tags (show menu to add to zone)
+            const availableFields = document.querySelectorAll('#availableFields .field-tag.available');
+            availableFields.forEach(tag => {
+                tag.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    const field = this.getAttribute('data-field');
+                    showZoneSelector(field, this);
+                });
+            });
+
+            // Handle field tags already in zones (click to remove)
+            const initZoneTags = () => {
+                const zoneTags = document.querySelectorAll('#xAxisZone .field-tag, #legendZone .field-tag');
+                zoneTags.forEach(tag => {
+                    // Remove old handler if exists
+                    tag.removeEventListener('click', handleZoneTagClick);
+                    // Add new handler
+                    tag.addEventListener('click', handleZoneTagClick);
+                });
+            };
+
+            const handleZoneTagClick = function(e) {
+                e.stopPropagation();
+                if (confirm('Remove this field from the zone?')) {
+                    this.remove();
+                }
+            };
+
+            initZoneTags();
+        }
+
+        /**
+         * Show menu to select which zone to add field to
+         */
+        function showZoneSelector(field, tagElement) {
+            // Create a context menu
+            const existingMenu = document.querySelector('.zone-selector-menu');
+            if (existingMenu) {
+                existingMenu.remove();
+            }
+
+            const menu = document.createElement('div');
+            menu.className = 'zone-selector-menu';
+            menu.style.cssText = `
+                position: absolute;
+                background: white;
+                border: 2px solid #1976d2;
+                border-radius: 4px;
+                box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+                z-index: 1000;
+                padding: 5px;
+            `;
+
+            const rect = tagElement.getBoundingClientRect();
+            menu.style.left = `${rect.left}px`;
+            menu.style.top = `${rect.bottom + 5}px`;
+
+            // Create menu options
+            const xAxisBtn = document.createElement('button');
+            xAxisBtn.textContent = '📊 Add to X-Axis';
+            xAxisBtn.style.cssText = `
+                display: block;
+                width: 100%;
+                padding: 8px 12px;
+                margin: 2px 0;
+                background: #e3f2fd;
+                border: 1px solid #1976d2;
+                border-radius: 3px;
+                cursor: pointer;
+                font-size: 13px;
+            `;
+            xAxisBtn.onclick = () => {
+                addFieldToZone(field, 'xAxisZone');
+                menu.remove();
+            };
+
+            const legendBtn = document.createElement('button');
+            legendBtn.textContent = '🏷️ Add to Legend';
+            legendBtn.style.cssText = xAxisBtn.style.cssText;
+            legendBtn.onclick = () => {
+                addFieldToZone(field, 'legendZone');
+                menu.remove();
+            };
+
+            menu.appendChild(xAxisBtn);
+            menu.appendChild(legendBtn);
+            document.body.appendChild(menu);
+
+            // Close menu when clicking elsewhere
+            setTimeout(() => {
+                document.addEventListener('click', function closeMenu(e) {
+                    if (!menu.contains(e.target)) {
+                        menu.remove();
+                        document.removeEventListener('click', closeMenu);
+                    }
+                });
+            }, 100);
+        }
+
+        /**
+         * Add field to a specific zone
+         */
+        function addFieldToZone(field, zoneId) {
+            const zone = document.getElementById(zoneId);
+
+            // Check if field already exists in this zone
+            const existingTag = zone.querySelector(`[data-field="${field}"]`);
+            if (existingTag) {
+                alert('Field already in this zone');
+                return; // Already in zone
+            }
+
+            // Create new active tag
+            const newTag = document.createElement('span');
+            newTag.className = 'field-tag active';
+            newTag.setAttribute('data-field', field);
+
+            // Format field name for display
+            let displayName = field.replace(/_/g, ' ');
+            displayName = displayName.charAt(0).toUpperCase() + displayName.slice(1);
+            newTag.textContent = displayName;
+
+            // Add click handler to remove from zone
+            newTag.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (confirm('Remove this field from the zone?')) {
+                    this.remove();
+                }
+            });
+
+            zone.appendChild(newTag);
+        }
+
+        /**
+         * Render chart based on pivot-style UI selections
+         */
+        function renderPivotChart() {
+            // Collect fields from X-Axis zone
+            const xAxisZone = document.getElementById('xAxisZone');
+            const xAxisFields = Array.from(xAxisZone.querySelectorAll('.field-tag'))
+                .map(tag => tag.getAttribute('data-field'));
+
+            // Collect fields from Legend zone
+            const legendZone = document.getElementById('legendZone');
+            const legendFields = Array.from(legendZone.querySelectorAll('.field-tag'))
+                .map(tag => tag.getAttribute('data-field'));
+
+            // Get KPI selection
+            const kpi = document.getElementById('kpiSelect').value;
+
+            // Validate: need at least one X-axis field
+            if (xAxisFields.length === 0) {
+                alert('Please add at least one field to X-Axis');
+                return;
+            }
+
+            // Determine X-axis configuration
+            let xAxisConfig;
+            if (xAxisFields.includes('date') && xAxisFields.includes('time')) {
+                xAxisConfig = 'datetime';
+            } else if (xAxisFields.includes('date')) {
+                xAxisConfig = 'date';
+            } else if (xAxisFields.includes('time')) {
+                xAxisConfig = 'time';
+            } else {
+                // Default to first field
+                xAxisConfig = xAxisFields[0];
+            }
+
+            // Determine groupBy configuration
+            let groupByConfig;
+            if (legendFields.length === 0) {
+                groupByConfig = 'none';
+            } else if (legendFields.length === 1) {
+                groupByConfig = legendFields[0];
+            } else {
+                // Multiple fields: combine with array
+                groupByConfig = legendFields;
+            }
+
+            // Build title
+            const xAxisLabel = xAxisFields.join(' + ');
+            const groupByLabel = legendFields.length > 0 ? legendFields.join(' + ') : 'None';
+
+            const options = {
+                xAxis: xAxisConfig,
+                groupBy: groupByConfig,
+                kpi: kpi,
+                title: `${kpi} - X: ${xAxisLabel}, Group: ${groupByLabel}`
+            };
+
+            displayData(currentData);
+            const result = createFlexibleChart(currentData, options);
+            console.log(`Chart rendered with pivot config:`, options);
+        }
+
+        function testGroupByController() {
+            currentData = sampleData;
+            displayData(sampleData);
+
+            // Use the flexible chart function with default settings
+            createFlexibleChart(sampleData, {
+                xAxis: 'time',
+                groupBy: 'date+controller_name',
+                kpi: 'CSSR_HUAWEI',
+                title: 'Sample Data - CSSR by Date & Controller'
+            });
+
+            alert(`Sample data loaded: ${sampleData.length} total records`);
+        }
+
+        async function fetchRealData() {
+            try {
+                const response = await fetch('http://localhost:8000/api/data/query', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        query_category: "2G",
+                        query_subcategory: "HUAWEI",
+                        query_name: "KPI_MONITORING2",
+                        time_granularity: "HOURLY",
+                        aggregation_level: 'controller_name',
+                        selected_kpis: ["CSSR_HUAWEI"],
+                        include_date: true,
+                        include_time: true,
+                        start_date: "2025-11-20",
+                        end_date: "2025-11-20",
+                        filters: {}
+                    })
+                });
+
+                const result = await response.json();
+                currentData = result.data;
+                displayData(result.data);
+
+                // Use the flexible chart function
+                createFlexibleChart(result.data, {
+                    xAxis: 'time',
+                    groupBy: 'date+controller_name',
+                    kpi: 'CSSR_HUAWEI',
+                    title: 'Real Data from API - CSSR by Date & Controller'
+                });
+
+                alert(`Real data loaded successfully! ${result.data.length} records from API.`);
+            } catch (error) {
+                alert('Error fetching data: ' + error.message);
+            }
+        }
+
+        // Initialize pivot UI on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            initializePivotUI();
+            // Load default chart
+            renderPivotChart();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KPI Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <!-- Chart.js from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Login Overlay -->
+    <div id="login-overlay" class="login-overlay">
+        <div class="login-box">
+            <h2>KPI Dashboard</h2>
+            <p>Enter password to continue</p>
+            <input type="password" id="login-password" placeholder="Password" autofocus>
+            <button id="login-btn" class="btn btn-primary">Login</button>
+            <p id="login-error" class="login-error"></p>
+        </div>
+    </div>
+
+    <div class="container">
+        <header>
+            <h1>KPI Dashboard</h1>
+            <p class="subtitle">Network Performance Indicators</p>
+        </header>
+
+        <!-- Filter Section -->
+        <div class="filter-section">
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label>View Mode:</label>
+                    <div class="view-toggle">
+                        <button class="btn btn-toggle active" data-view="hourly">Hourly</button>
+                        <button class="btn btn-toggle" data-view="daily">Daily</button>
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <label>Quick Select:</label>
+                    <div class="quick-buttons">
+                        <button class="btn btn-quick" data-days="2">Last 2 Days</button>
+                        <button class="btn btn-quick" data-days="3">Last 3 Days</button>
+                        <button class="btn btn-quick" data-days="4">Last 4 Days</button>
+                        <button class="btn btn-quick" data-days="5">Last 5 Days</button>
+                        <button class="btn btn-quick" data-days="6">Last 6 Days</button>
+                        <button class="btn btn-quick" data-days="7">Last 7 Days</button>
+                    </div>
+                </div>
+            </div>
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label for="start-date">Custom Range (Max 7 Days):</label>
+                    <div class="date-inputs">
+                        <input type="date" id="start-date" class="date-input">
+                        <span>to</span>
+                        <input type="date" id="end-date" class="date-input">
+                        <button class="btn btn-primary" id="apply-filter">Apply</button>
+                    </div>
+                </div>
+            </div>
+            <div class="filter-info">
+                <span id="current-range">Loading...</span>
+                <span id="error-message" class="error-msg"></span>
+            </div>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Loading data...</p>
+        </div>
+
+        <!-- Charts Container -->
+        <div id="charts-container" class="charts-grid">
+            <!-- Charts will be dynamically inserted here -->
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cluster KPI Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+
+    <!-- Login Overlay -->
+    <div id="login-overlay" class="login-overlay">
+        <div class="login-box">
+            <h2>Cluster KPI Dashboard</h2>
+            <p>Enter password to continue</p>
+            <input type="password" id="login-password" placeholder="Password" autofocus>
+            <button id="login-btn" class="btn btn-primary">Login</button>
+            <p id="login-error" class="login-error"></p>
+        </div>
+    </div>
+
+    <!-- Cluster Cell Popup (shared, positioned by JS) -->
+    <div id="cluster-popup" class="cluster-popup" style="display:none;">
+        <div class="cluster-popup-header">
+            <strong id="popup-title"></strong>
+            <span id="popup-count" class="popup-count"></span>
+            <button id="popup-close-btn" class="popup-close-btn">&times;</button>
+        </div>
+        <div id="popup-cells" class="popup-cells"></div>
+        <div class="cluster-popup-footer">
+            <button class="btn btn-primary btn-sm" id="popup-download-btn">&#11123; Download XLSX</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <header>
+            <h1>Cluster KPI Dashboard</h1>
+            <p class="subtitle">Huawei 2G &mdash; Network Performance Indicators</p>
+        </header>
+
+        <!-- Filter Section -->
+        <div class="filter-section">
+
+            <!-- Row 1: View mode | Cluster | Quick select -->
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label>View Mode:</label>
+                    <div class="view-toggle">
+                        <button class="btn btn-toggle active" data-view="hourly">Hourly</button>
+                        <button class="btn btn-toggle" data-view="daily">Daily</button>
+                        <button class="btn btn-toggle btn-compare" data-view="compare">Compare Days</button>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <label>Cluster:</label>
+                    <div class="quick-buttons" id="batch-buttons">
+                        <button class="btn btn-batch active" data-batch="all">All Cells</button>
+                        <button class="btn btn-batch" data-batch="batch1" id="btn-batch1">Cluster 1 <span class="cell-count" id="count-batch1"></span></button>
+                        <button class="btn btn-batch" data-batch="batch2" id="btn-batch2">Cluster 2 <span class="cell-count" id="count-batch2"></span></button>
+                    </div>
+                </div>
+
+                <div class="filter-group" id="quick-select-group">
+                    <label>Quick Select:</label>
+                    <div class="quick-buttons">
+                        <button class="btn btn-quick" data-days="2">Last 2 Days</button>
+                        <button class="btn btn-quick" data-days="7">Last 7 Days</button>
+                        <button class="btn btn-quick" data-days="14">Last 14 Days</button>
+                        <button class="btn btn-quick" data-days="30">Last 30 Days</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 2a: Normal date mode (range / specific) — hidden in compare -->
+            <div id="normal-date-section">
+                <!-- Date mode toggle -->
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label>Date Mode:</label>
+                        <div class="btn-group">
+                            <button class="btn btn-datemode active" id="btn-mode-range">Date Range</button>
+                            <button class="btn btn-datemode" id="btn-mode-specific">Specific Dates</button>
+                        </div>
+                    </div>
+
+                    <!-- Range inputs -->
+                    <div class="filter-group" id="range-inputs">
+                        <label>Range (Max 30 Days):</label>
+                        <div class="date-inputs">
+                            <input type="date" id="start-date" class="date-input">
+                            <span>to</span>
+                            <input type="date" id="end-date" class="date-input">
+                            <button class="btn btn-primary" id="apply-filter">Apply</button>
+                        </div>
+                    </div>
+
+                    <!-- Specific dates inputs (hidden by default) -->
+                    <div class="filter-group" id="specific-inputs" style="display:none;">
+                        <label>Specific Dates <span class="hint">(max 10, click + to add)</span>:</label>
+                        <div class="specific-dates-wrapper">
+                            <div id="date-tags" class="date-tags"></div>
+                            <div class="date-inputs">
+                                <input type="date" id="add-specific-date" class="date-input">
+                                <button class="btn btn-secondary" id="add-date-btn">+ Add</button>
+                                <button class="btn btn-primary" id="apply-specific">Apply</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 2b: Compare mode (hidden by default) -->
+            <div id="compare-section" style="display:none;">
+                <div class="filter-row" id="compare-days-list">
+                    <!-- Dynamic day rows injected by JS -->
+                </div>
+                <div class="filter-row">
+                    <button class="btn btn-secondary" id="add-compare-day">+ Add Day</button>
+                    <button class="btn btn-primary" id="apply-compare">Compare</button>
+                </div>
+            </div>
+
+            <div class="filter-info">
+                <span id="current-range">Loading...</span>
+                <span id="error-message" class="error-msg"></span>
+            </div>
+        </div>
+
+        <!-- Loading Indicator -->
+        <div id="loading" class="loading">
+            <div class="spinner"></div>
+            <p>Loading data...</p>
+        </div>
+
+        <!-- Charts Container -->
+        <div id="charts-container" class="charts-grid"></div>
+    </div>
+
+    <script src="/static/script.js?v=6"></script>
+</body>
+</html>

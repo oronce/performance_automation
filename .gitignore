@@ -1,0 +1,64 @@
+# ── Node ──────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm
+.yarn
+
+# ── Python ────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# ── Virtual environments ───────────────────────────────────────────
+venv/
+venv3*/
+venv38*/
+.venv/
+env/
+ENV/
+
+# ── DuckDB cache ──────────────────────────────────────────────────
+*.db
+*.duckdb
+
+# ── Excel / Office temp files ─────────────────────────────────────
+~$*.xlsx
+~$*.xls
+~$*.pptx
+~$*.docx
+.~lock.*#
+
+# ── Logs ──────────────────────────────────────────────────────────
+*.log
+*.out
+logs/
+
+# ── OS ────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── IDE ───────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ── Misc ──────────────────────────────────────────────────────────
+*.csv
+outputs/
+nul
+pip
+
+# ── laod_data_stuff excel files (keep only EPT.xlsx) ─────────────
+laod_data_stuff/assets/excel_files/*.xlsx
+laod_data_stuff/assets/excel_files/*.xls
+!laod_data_stuff/assets/excel_files/EPT.xlsx
