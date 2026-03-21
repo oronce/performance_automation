@@ -537,8 +537,10 @@ GROUP BY date , site_name
 #################################################
 ###########here is like keep only cell doing more than 1800 and average their site
 
+ select  distinct site_name 
 
-
+FROM 
+(
  select date  ,time, ept.SITE_NAME   , avg(downtime_sec) avg_down_per_site
 
   FROM 
@@ -605,7 +607,7 @@ GROUP BY date , site_name
     --   EPT_2G ept ON e.CELL_NAME = ept.CELL_NAME AND ept.VENDOR = 'ERICSSON'
 
     WHERE
-      e.DATE BETWEEN '2026-02-16' AND '2026-02-22'  -- Adjust date range as needed
+      e.DATE BETWEEN '2026-03-02' AND '2026-03-22'  -- Adjust date range as needed
 
     GROUP BY
       e.DATE,
@@ -631,6 +633,7 @@ GROUP BY date ,time , ept.SITE_NAME
 -- , cell_name 
  -- HAVING avg(downtime_sec) > 1800
 
+) as t2
 
 
 
@@ -641,11 +644,104 @@ GROUP BY date ,time , ept.SITE_NAME
 
 
 
+select date  ,time, ept.SITE_NAME   , avg(downtime_sec) avg_down_per_site
+
+  FROM 
+ (
+ SELECT
+      e.DATE,
+        e.TIME,
+      e.CELL_NAME,
+      -- ept.SITE_NAME,
+      -- ept.ARRONDISSEMENT,
+      -- ept.COMMUNE,
+      -- ept.DEPARTEMENT,
+
+      -- CSSR (Call Setup Success Rate) - ERICSSON
+      CASE
+        WHEN COALESCE(SUM(CAST(CCALLS AS DOUBLE)), 0) = 0
+          OR COALESCE(SUM(CAST(CMSESTAB AS DOUBLE)), 0) = 0
+          OR COALESCE(SUM(CAST(TASSALL AS DOUBLE)), 0) = 0
+          OR (COALESCE(SUM(CAST(TFCASSALL AS DOUBLE)), 0)
+               + COALESCE(SUM(CAST(THCASSALL AS DOUBLE)), 0)
+               + COALESCE(SUM(CAST(TFCASSALLSUB AS DOUBLE)), 0)
+               + COALESCE(SUM(CAST(THCASSALLSUB AS DOUBLE)), 0)
+            ) = 0
+        THEN 0
+        ELSE
+          100.0
+          * (1.0 - (SUM(CAST(CCONGS AS DOUBLE))
+                     / SUM(CAST(CCALLS AS DOUBLE))))
+          * (1.0 - ((SUM(CAST(CNDROP AS DOUBLE))
+                      - SUM(CAST(CNRELCONG AS DOUBLE)))
+                     / SUM(CAST(CMSESTAB AS DOUBLE))))
+          * (SUM(CAST(TCASSALL AS DOUBLE))
+              / SUM(CAST(TASSALL AS DOUBLE)))
+          * (1.0 - (
+              (SUM(CAST(TFNDROP AS DOUBLE))
+                + SUM(CAST(THNDROP AS DOUBLE))
+                + SUM(CAST(TFNDROPSUB AS DOUBLE))
+                + SUM(CAST(THNDROPSUB AS DOUBLE))
+              )
+              / (
+                SUM(CAST(TFCASSALL AS DOUBLE))
+                + SUM(CAST(THCASSALL AS DOUBLE))
+                + SUM(CAST(TFCASSALLSUB AS DOUBLE))
+                + SUM(CAST(THCASSALLSUB AS DOUBLE))
+              )
+            ))
+      END AS CSSR_ERICSSON,
+
+      -- 2G Cell Availability Rate - ERICSSON
+      100.0 - (100.0 * COALESCE(SUM(CAST(TDWNACC AS DOUBLE)), 0) /
+        NULLIF(COALESCE(SUM(CAST(TDWNSCAN AS DOUBLE)), 0), 0)) AS CELL_AVAILABILITY_RATE_ERICSSON,
+
+      
+       CASE
+  WHEN SUM(CAST(TDWNSCAN AS DOUBLE)) < 8642
+   THEN SUM(CAST(TDWNACC AS DOUBLE)) * 10
+   ELSE SUM(CAST(TDWNACC AS DOUBLE)) * 86400.0 / SUM(CAST(TDWNSCAN AS DOUBLE)) end downtime_sec
+  
+      
+
+    FROM
+      hourly_ericsson_arcep_2g_counters e
+    -- LEFT JOIN
+    --   EPT_2G ept ON e.CELL_NAME = ept.CELL_NAME AND ept.VENDOR = 'ERICSSON'
+
+    WHERE
+      e.DATE BETWEEN '2026-03-02' AND '2026-03-08'  -- Adjust date range as needed
 
 
 
 
+    GROUP BY
+      e.DATE,
+       e.TIME,
+       e.CELL_NAME
+      -- ept.SITE_NAME,
 
+      having  CASE
+  WHEN SUM(CAST(TDWNSCAN AS DOUBLE)) < 8642
+   THEN SUM(CAST(TDWNACC AS DOUBLE)) * 10
+   ELSE SUM(CAST(TDWNACC AS DOUBLE)) * 86400.0 / SUM(CAST(TDWNSCAN AS DOUBLE)) end > 1800
+   
+   -- HAVING  (COALESCE(SUM(CAST(TAVAACC AS DOUBLE)), 0)) < 4860
+   
+  -- DESC 
+ ) t1
+ LEFT JOIN
+    EPT_2G ept ON t1.CELL_NAME = ept.CELL_NAME AND ept.VENDOR = 'ERICSSON'
+
+
+GROUP BY date ,time , ept.SITE_NAME
+-- , cell_name 
+ -- HAVING avg(downtime_sec) > 1800
+
+
+#############################
+############################
+############################
 
 
 
@@ -679,9 +775,9 @@ GROUP BY date ,time , ept.SITE_NAME
 
  select date  
  ,TIME
-, t1.cell_name
+-- , t1.cell_name
  , ept.SITE_NAME   , avg(downtime_sec) avg_down_per_site
- ,sum(downtime_sec_manual)
+ -- ,sum(downtime_sec_manual)
 
   FROM (
 
@@ -730,7 +826,7 @@ GROUP BY date ,time , ept.SITE_NAME
     EPT_2G ept ON t1.CELL_NAME = ept.CELL_NAME AND ept.VENDOR = 'HUAWEI'
 GROUP BY date 
 ,TIME 
-, t1.cell_name
+-- , t1.cell_name
 , ept.SITE_NAME
 -- , cell_name 
  -- HAVING avg(downtime_sec) > 1800

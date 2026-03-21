@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KPI Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="/static/style.css?v=5">
     <!-- Chart.js from CDN -->
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 </head>
 <body>
     <!-- Login Overlay -->
@@ -25,6 +26,13 @@
             <h1>KPI Dashboard</h1>
             <p class="subtitle">Network Performance Indicators</p>
         </header>
+
+        <!-- Section Navigation -->
+        <div class="section-nav">
+            <button class="btn btn-section active" data-section="kpi">KPI Dashboard</button>
+            <button class="btn btn-section" data-section="packet-loss">Packet Loss</button>
+            <button class="btn btn-section" data-section="cssr-analysis">CSSR Analysis</button>
+        </div>
 
         <!-- Filter Section -->
         <div class="filter-section">
@@ -45,12 +53,15 @@
                         <button class="btn btn-quick" data-days="5">Last 5 Days</button>
                         <button class="btn btn-quick" data-days="6">Last 6 Days</button>
                         <button class="btn btn-quick" data-days="7">Last 7 Days</button>
+                        <button class="btn btn-quick" data-days="8">Last 8 Days</button>
+                        <button class="btn btn-quick" data-days="9">Last 9 Days</button>
+                        <button class="btn btn-quick" data-days="10">Last 10 Days</button>
                     </div>
                 </div>
             </div>
             <div class="filter-row">
                 <div class="filter-group">
-                    <label for="start-date">Custom Range (Max 7 Days):</label>
+                    <label for="start-date">Custom Range (Max 10 Days):</label>
                     <div class="date-inputs">
                         <input type="date" id="start-date" class="date-input">
                         <span>to</span>
@@ -71,12 +82,141 @@
             <p>Loading data...</p>
         </div>
 
-        <!-- Charts Container -->
-        <div id="charts-container" class="charts-grid">
-            <!-- Charts will be dynamically inserted here -->
+        <!-- KPI Section -->
+        <div id="kpi-section">
+            <div id="charts-container" class="charts-grid">
+                <!-- KPI charts will be dynamically inserted here -->
+            </div>
         </div>
+
+        <!-- Packet Loss Section -->
+        <div id="packet-loss-section" style="display:none;">
+            <div id="packet-loss-container" class="charts-grid">
+                <!-- Packet loss charts will be dynamically inserted here -->
+            </div>
+        </div>
+
+        <!-- CSSR Analysis Section -->
+        <div id="cssr-section" style="display:none;">
+
+            <!-- CSSR Analysis filter (independent from the shared filter) -->
+            <div class="filter-section" style="margin-bottom:20px;">
+                <div class="filter-row">
+                    <div class="filter-group">
+                        <label>Date Range: <span style="color:#e67e22;font-size:12px;font-weight:400;">(max 3 days)</span></label>
+                        <div class="quick-buttons" style="margin-bottom:8px;">
+                            <button class="btn btn-quick" data-ca-quick="0">Today</button>
+                            <button class="btn btn-quick" data-ca-quick="1">Yesterday</button>
+                            <button class="btn btn-quick" data-ca-quick="2">Last 2 Days</button>
+                            <button class="btn btn-quick" data-ca-quick="3">Last 3 Days</button>
+                        </div>
+                        <div class="date-inputs">
+                            <input type="date" id="ca-start-date" class="date-input">
+                            <span>to</span>
+                            <input type="date" id="ca-end-date" class="date-input">
+                        </div>
+                    </div>
+                    <div class="filter-group">
+                        <label>Time Filter (optional):</label>
+                        <div class="date-inputs">
+                            <input type="text" id="ca-time-start" class="date-input" placeholder="00:00" maxlength="5" pattern="[0-2][0-9]:[0-5][0-9]" style="width:90px;">
+                            <span>to</span>
+                            <input type="text" id="ca-time-end" class="date-input" placeholder="23:00" maxlength="5" pattern="[0-2][0-9]:[0-5][0-9]" style="width:90px;">
+                        </div>
+                    </div>
+                    <div class="filter-group" style="align-self:flex-end;">
+                        <button class="btn btn-primary" id="ca-apply">Apply</button>
+                    </div>
+                </div>
+                <div class="filter-row" style="margin-bottom:0;">
+                    <div class="filter-group">
+                        <label>Aggregation:</label>
+                        <div class="btn-group">
+                            <button class="btn ca-btn active" data-ca-level="cell_name">Cell</button>
+                            <button class="btn ca-btn" data-ca-level="site_name">Site</button>
+                            <button class="btn ca-btn" data-ca-level="commune">Commune</button>
+                            <button class="btn ca-btn" data-ca-level="arrondissement">Arrondissement</button>
+                            <button class="btn ca-btn" data-ca-level="departement">Département</button>
+                            <button class="btn ca-btn" data-ca-level="controller_name">Controller</button>
+                        </div>
+                    </div>
+                    <div class="filter-group" style="align-self:flex-end; margin-left:auto;">
+                        <button class="btn-map" id="ca-map-btn" onclick="openCssrMap()">&#127757; View on Map</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Loading indicator for CSSR section -->
+            <div id="ca-loading" class="loading" style="display:none;">
+                <div class="spinner"></div>
+                <p>Loading CSSR data...</p>
+            </div>
+
+            <!-- Pie charts — network-wide failure breakdown (no aggregation) -->
+            <div id="ca-pie-section">
+                <h2 class="section-title">CSR Failure Breakdown (Network Level)</h2>
+                <div class="ca-pie-grid">
+                    <div class="chart-card">
+                        <h3 class="chart-title">Ericsson — CSR Failure Components</h3>
+                        <div class="chart-wrapper ca-pie">
+                            <canvas id="ca-pie-ericsson"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3 class="chart-title">Huawei — CSR Failure Components</h3>
+                        <div class="chart-wrapper ca-pie">
+                            <canvas id="ca-pie-huawei"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Horizontal bar charts — worst cells/sites/geo -->
+            <div id="ca-bar-section" style="margin-top:24px;">
+                <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;margin-bottom:14px;">
+                    <h2 class="section-title" style="margin:0;">Worst Performers</h2>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <label style="font-weight:600;color:#555;font-size:13px;">Top N:</label>
+                        <select id="ca-top-n" class="date-input" style="padding:6px 10px;font-size:13px;">
+                            <option value="10">Top 10</option>
+                            <option value="20">Top 20</option>
+                            <option value="50" selected>Top 50</option>
+                            <option value="100">Top 100</option>
+                        </select>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:8px;">
+                        <label style="font-weight:600;color:#555;font-size:13px;">Rank by:</label>
+                        <select id="ca-sort-by" class="date-input" style="padding:6px 10px;font-size:13px;">
+                            <option value="CSR_FAILURES" selected>CSR Failures</option>
+                            <option value="CSSR">CSSR (%)</option>
+                            <option value="CDR">CDR (%)</option>
+                            <option value="CBR">CBR (%)</option>
+                            <option value="TCH_CONG">TCH Congestion (%)</option>
+                            <option value="SDCCH_DROP">SDCCH Drop Rate (%)</option>
+                            <option value="SDCCH_CONG">SDCCH Congestion (%)</option>
+                            <option value="TRAFFIC_VOIX">Voice Traffic (Erl)</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="ca-pie-grid">
+                    <div class="chart-card">
+                        <h3 class="chart-title" id="ca-bar-title-ericsson">Ericsson — Top 50 Worst Cells</h3>
+                        <div class="chart-wrapper ca-bar" id="ca-bar-wrap-ericsson">
+                            <canvas id="ca-bar-ericsson"></canvas>
+                        </div>
+                    </div>
+                    <div class="chart-card">
+                        <h3 class="chart-title" id="ca-bar-title-huawei">Huawei — Top 50 Worst Cells</h3>
+                        <div class="chart-wrapper ca-bar" id="ca-bar-wrap-huawei">
+                            <canvas id="ca-bar-huawei"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div><!-- /#cssr-section -->
     </div>
 
-    <script src="/static/script.js"></script>
+    <script src="/static/script.js?v=5"></script>
 </body>
 </html>

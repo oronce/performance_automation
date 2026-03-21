@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DuckDB Client</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:           #1a1b26;
+  --sidebar-bg:   #13131c;
+  --panel-bg:     #1e2030;
+  --border:       #2a2b40;
+  --border-light: #1e1f30;
+  --accent:       #7aa2f7;
+  --accent2:      #bb9af7;
+  --text:         #c0caf5;
+  --text-dim:     #565f89;
+  --text-muted:   #2a2b3d;
+  --success:      #9ece6a;
+  --error:        #f7768e;
+  --warning:      #e0af68;
+  --header-h:     44px;
+  --sidebar-w:    250px;
+  --toolbar-h:    42px;
+  --status-h:     28px;
+  --font-mono:    'Consolas', 'Cascadia Code', 'Monaco', monospace;
+}
+
+html, body {
+  height: 100%;
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+/* ── header ───────────────────────────────────────── */
+header {
+  height: var(--header-h);
+  background: var(--sidebar-bg);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 10px;
+  flex-shrink: 0;
+}
+header .logo  { font-size: 20px; line-height: 1; }
+header .title { font-weight: 700; font-size: 14px; color: var(--accent); letter-spacing: .4px; }
+header .db-path {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  max-width: 480px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+header .spacer { flex: 1; }
+header .conn-dot {
+  width: 9px; height: 9px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: background .3s;
+  flex-shrink: 0;
+}
+header .conn-dot.ok  { background: var(--success); box-shadow: 0 0 6px var(--success); }
+header .conn-dot.err { background: var(--error); }
+
+/* ── layout ───────────────────────────────────────── */
+#layout {
+  display: flex;
+  height: calc(100vh - var(--header-h));
+}
+
+/* ── sidebar ──────────────────────────────────────── */
+#sidebar {
+  width: var(--sidebar-w);
+  min-width: var(--sidebar-w);
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+#sidebar-title {
+  padding: 10px 14px 8px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+#sidebar-title button {
+  font-size: 10px;
+  padding: 2px 7px;
+  background: var(--border);
+  color: var(--text-dim);
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+#sidebar-title button:hover { color: var(--text); background: #35364f; }
+
+#table-list {
+  overflow-y: auto;
+  flex: 1;
+}
+#table-list::-webkit-scrollbar { width: 4px; }
+#table-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.t-item { border-bottom: 1px solid var(--border-light); }
+
+.t-row {
+  display: flex;
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  gap: 7px;
+  transition: background .1s;
+  user-select: none;
+}
+.t-row:hover    { background: #1c1d2e; }
+.t-row.active   { background: #1e2a45; border-left: 2px solid var(--accent); padding-left: 10px; }
+.t-row .t-icon  { font-size: 13px; flex-shrink: 0; }
+.t-row .t-name  { flex: 1; font-weight: 500; font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.t-row .t-count { font-size: 10px; color: var(--text-dim); font-family: var(--font-mono); flex-shrink: 0; }
+
+.t-schema {
+  display: none;
+  background: #0f1018;
+  padding: 4px 0 6px;
+}
+.t-schema.open { display: block; }
+.t-schema .s-col {
+  display: flex;
+  align-items: center;
+  padding: 3px 12px 3px 32px;
+  gap: 8px;
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+.t-schema .s-name { color: var(--text); }
+.t-schema .s-type { color: var(--accent2); font-size: 10px; }
+
+/* ── main ─────────────────────────────────────────── */
+#main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ── editor ───────────────────────────────────────── */
+#editor-wrap {
+  flex: 0 0 38%;
+  min-height: 80px;
+  border-bottom: 1px solid var(--border);
+  position: relative;
+}
+#sql-editor {
+  width: 100%;
+  height: 100%;
+  resize: none;
+  background: var(--panel-bg);
+  color: var(--text);
+  border: none;
+  outline: none;
+  padding: 12px 16px;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 1.65;
+  tab-size: 2;
+}
+#sql-editor::placeholder { color: var(--text-muted); }
+
+/* ── toolbar ──────────────────────────────────────── */
+#toolbar {
+  height: var(--toolbar-h);
+  display: flex;
+  align-items: center;
+  padding: 0 14px;
+  gap: 8px;
+  background: var(--sidebar-bg);
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+.btn {
+  padding: 5px 14px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: opacity .15s, background .15s;
+}
+.btn:hover { opacity: .85; }
+.btn-run   { background: var(--accent); color: #1a1b26; }
+.btn-clear { background: var(--border); color: var(--text); }
+
+.shortcut-hint {
+  font-size: 10px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+kbd {
+  background: var(--border);
+  border-radius: 3px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-family: var(--font-mono);
+  color: var(--text-dim);
+}
+.limit-wrap {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.limit-wrap input {
+  width: 72px;
+  padding: 3px 7px;
+  background: var(--panel-bg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--text);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  outline: none;
+}
+.limit-wrap input:focus { border-color: var(--accent); }
+
+/* ── results ──────────────────────────────────────── */
+#results-wrap {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+#results-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+#results-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-muted);
+  font-size: 13px;
+  flex-direction: column;
+  gap: 6px;
+}
+.placeholder .ph-icon { font-size: 32px; opacity: .3; }
+
+#results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  display: none;
+}
+#results-table th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #131320;
+  border-bottom: 2px solid var(--accent);
+  border-right: 1px solid var(--border);
+  padding: 7px 12px;
+  text-align: left;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+  white-space: nowrap;
+}
+#results-table td {
+  padding: 4px 12px;
+  border-bottom: 1px solid var(--border-light);
+  border-right: 1px solid var(--border-light);
+  white-space: nowrap;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+}
+#results-table tr:hover td { background: #1c1e30; }
+td.is-null  { color: var(--text-muted); font-style: italic; }
+td.is-num   { color: var(--warning); text-align: right; }
+td.is-bool  { color: var(--accent2); }
+
+/* ── status bar ───────────────────────────────────── */
+#status-bar {
+  height: var(--status-h);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 14px;
+  background: var(--sidebar-bg);
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+#status-msg.ok  { color: var(--success); }
+#status-msg.err { color: var(--error); }
+
+/* ── pagination ───────────────────────────────────── */
+#pagination {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+#pagination button {
+  padding: 2px 8px;
+  background: var(--border);
+  color: var(--text);
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 11px;
+}
+#pagination button:disabled { opacity: .35; cursor: default; }
+#pagination span { font-size: 11px; color: var(--text-dim); }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="logo">🦆</span>
+  <span class="title">DuckDB Client</span>
+  <span class="db-path" id="db-path">connecting…</span>
+  <span class="spacer"></span>
+  <span class="conn-dot" id="conn-dot"></span>
+</header>
+
+<div id="layout">
+
+  <!-- ── Sidebar ── -->
+  <aside id="sidebar">
+    <div id="sidebar-title">
+      Tables
+      <button id="btn-refresh" title="Refresh table list">⟳ Refresh</button>
+    </div>
+    <div id="table-list">
+      <div class="placeholder"><span class="ph-icon">⏳</span>Loading…</div>
+    </div>
+  </aside>
+
+  <!-- ── Main panel ── -->
+  <div id="main">
+
+    <div id="editor-wrap">
+      <textarea
+        id="sql-editor"
+        spellcheck="false"
+        placeholder="-- Write SQL here  •  Ctrl+Enter or F5 to execute
+SELECT * FROM &quot;hourly_huawei_4g_all_counters_1&quot; LIMIT 100;"
+      ></textarea>
+    </div>
+
+    <div id="toolbar">
+      <button class="btn btn-run"   id="btn-run">▶ Run</button>
+      <button class="btn btn-clear" id="btn-clear">✕ Clear</button>
+      <span class="shortcut-hint"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> · <kbd>F5</kbd></span>
+      <div class="limit-wrap">
+        Limit
+        <input type="number" id="row-limit" value="1000" min="1" max="10000">
+      </div>
+    </div>
+
+    <div id="results-wrap">
+      <div class="placeholder" id="ph">
+        <span class="ph-icon">📋</span>
+        Run a query to see results
+      </div>
+      <table id="results-table"></table>
+    </div>
+
+    <div id="status-bar">
+      <span id="status-msg">Ready</span>
+      <div id="pagination">
+        <button id="pg-prev">‹ Prev</button>
+        <span id="pg-info"></span>
+        <button id="pg-next">Next ›</button>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+"use strict";
+
+// ── State ─────────────────────────────────────────────────────────────────────
+
+const state = {
+  browseTable:  null,   // table name when browsing (not custom SQL)
+  browseOffset: 0,
+  browseLimit:  200,
+  browseTotal:  0,
+};
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+
+async function apiFetch(url, opts = {}) {
+  const r = await fetch(url, opts);
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({ detail: r.statusText }));
+    throw new Error(e.detail || r.statusText);
+  }
+  return r.json();
+}
+
+function setStatus(msg, cls = '') {
+  const el = document.getElementById('status-msg');
+  el.textContent = msg;
+  el.className   = cls;
+}
+
+function showPlaceholder(msg, icon = '📋', isError = false) {
+  const ph  = document.getElementById('ph');
+  const tbl = document.getElementById('results-table');
+  tbl.style.display = 'none';
+  tbl.innerHTML = '';
+  ph.style.display  = 'flex';
+  ph.innerHTML = `<span class="ph-icon">${icon}</span>${msg}`;
+  if (isError) ph.style.color = 'var(--error)';
+  else         ph.style.color = '';
+}
+
+function isNumericType(v) {
+  return typeof v === 'number';
+}
+
+// ── Sidebar ───────────────────────────────────────────────────────────────────
+
+let _activeTable = null;
+
+async function loadTables() {
+  document.getElementById('table-list').innerHTML =
+    '<div class="placeholder"><span class="ph-icon">⏳</span>Loading…</div>';
+
+  try {
+    const data = await apiFetch('/duck/tables');
+    document.getElementById('db-path').textContent = data.db || '';
+    const dot = document.getElementById('conn-dot');
+    dot.className = 'conn-dot ok';
+
+    renderSidebar(data.tables);
+    setStatus('Ready');
+  } catch (e) {
+    document.getElementById('conn-dot').className = 'conn-dot err';
+    document.getElementById('table-list').innerHTML =
+      `<div class="placeholder" style="color:var(--error)">${e.message}</div>`;
+    setStatus('Connection error: ' + e.message, 'err');
+  }
+}
+
+function renderSidebar(tables) {
+  const list = document.getElementById('table-list');
+  if (!tables.length) {
+    list.innerHTML = '<div class="placeholder">No tables found</div>';
+    return;
+  }
+  list.innerHTML = '';
+  for (const t of tables) {
+    const item = document.createElement('div');
+    item.className = 't-item';
+    item.dataset.name = t.name;
+    item.innerHTML = `
+      <div class="t-row" data-name="${t.name}">
+        <span class="t-icon">▤</span>
+        <span class="t-name" title="${t.name}">${t.name}</span>
+        <span class="t-count">${t.rows.toLocaleString()}</span>
+      </div>
+      <div class="t-schema" id="schema-${sanitizeId(t.name)}"></div>
+    `;
+    item.querySelector('.t-row').addEventListener('click', () => onTableClick(t.name));
+    list.appendChild(item);
+  }
+}
+
+function sanitizeId(name) {
+  return name.replace(/[^a-z0-9_\-]/gi, '_');
+}
+
+async function onTableClick(name) {
+  const schemaEl = document.getElementById('schema-' + sanitizeId(name));
+  const allRows  = document.querySelectorAll('.t-row');
+  const thisRow  = document.querySelector(`.t-row[data-name="${name}"]`);
+  const allSch   = document.querySelectorAll('.t-schema');
+
+  const isAlreadyOpen = schemaEl.classList.contains('open') && _activeTable === name;
+
+  // close everything
+  allRows.forEach(r => r.classList.remove('active'));
+  allSch.forEach(s => s.classList.remove('open'));
+
+  if (isAlreadyOpen) {
+    _activeTable = null;
+    return;
+  }
+
+  _activeTable = name;
+  thisRow.classList.add('active');
+  schemaEl.classList.add('open');
+
+  // lazy-load schema
+  if (!schemaEl.dataset.loaded) {
+    schemaEl.innerHTML = '<div style="padding:6px 32px;color:var(--text-dim);font-size:11px">Loading…</div>';
+    try {
+      const data = await apiFetch(`/duck/tables/${encodeURIComponent(name)}/schema`);
+      schemaEl.innerHTML = data.columns.map(c => `
+        <div class="s-col">
+          <span class="s-name">${c.name}</span>
+          <span class="s-type">${c.type}</span>
+        </div>
+      `).join('');
+      schemaEl.dataset.loaded = '1';
+    } catch (e) {
+      schemaEl.innerHTML = `<div style="padding:6px 32px;color:var(--error);font-size:11px">${e.message}</div>`;
+    }
+  }
+
+  // fill editor with a SELECT for this table
+  browseTable(name);
+}
+
+// ── Table browse (paginated) ──────────────────────────────────────────────────
+
+function browseTable(name, offset = 0) {
+  state.browseTable  = name;
+  state.browseOffset = offset;
+  state.browseLimit  = 200;
+
+  const sql = `SELECT *\nFROM "${name}"\nLIMIT ${state.browseLimit} OFFSET ${offset};`;
+  document.getElementById('sql-editor').value = sql;
+  runBrowse(name, offset);
+}
+
+async function runBrowse(name, offset) {
+  showPlaceholder('Loading…', '⏳');
+  setStatus('Loading…');
+  try {
+    const data = await apiFetch(
+      `/duck/tables/${encodeURIComponent(name)}/data?limit=${state.browseLimit}&offset=${offset}`
+    );
+    state.browseTotal = data.total;
+    renderResults({ columns: data.columns, rows: data.rows, row_count: data.rows.length });
+
+    const page    = Math.floor(offset / state.browseLimit) + 1;
+    const pages   = Math.ceil(data.total / state.browseLimit);
+    const showing = Math.min(offset + state.browseLimit, data.total);
+    setStatus(
+      `${offset + 1}–${showing} of ${data.total.toLocaleString()} rows · table browse`,
+      'ok'
+    );
+    showPagination(page, pages);
+  } catch (e) {
+    showPlaceholder(e.message, '⚠', true);
+    setStatus('Error: ' + e.message, 'err');
+  }
+}
+
+function showPagination(page, pages) {
+  const pg = document.getElementById('pagination');
+  if (pages <= 1) { pg.style.display = 'none'; return; }
+  pg.style.display = 'flex';
+  document.getElementById('pg-info').textContent = `Page ${page} / ${pages}`;
+  document.getElementById('pg-prev').disabled = page <= 1;
+  document.getElementById('pg-next').disabled = page >= pages;
+}
+
+document.getElementById('pg-prev').addEventListener('click', () => {
+  if (!state.browseTable) return;
+  state.browseOffset = Math.max(0, state.browseOffset - state.browseLimit);
+  runBrowse(state.browseTable, state.browseOffset);
+});
+document.getElementById('pg-next').addEventListener('click', () => {
+  if (!state.browseTable) return;
+  if (state.browseOffset + state.browseLimit < state.browseTotal) {
+    state.browseOffset += state.browseLimit;
+    runBrowse(state.browseTable, state.browseOffset);
+  }
+});
+
+// ── Custom SQL execution ──────────────────────────────────────────────────────
+
+async function runQuery() {
+  const sql   = document.getElementById('sql-editor').value.trim();
+  if (!sql) return;
+
+  const limit = parseInt(document.getElementById('row-limit').value, 10) || 1000;
+
+  // switching to custom SQL → disable table browse pagination
+  state.browseTable = null;
+  document.getElementById('pagination').style.display = 'none';
+
+  showPlaceholder('Running…', '⏳');
+  setStatus('Running…');
+
+  try {
+    const data = await apiFetch('/duck/query', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ sql, limit }),
+    });
+
+    renderResults(data);
+
+    const truncNote = data.truncated ? ` (capped at ${limit})` : '';
+    setStatus(
+      `${data.row_count.toLocaleString()} row${data.row_count !== 1 ? 's' : ''} · ${data.duration_ms} ms${truncNote}`,
+      'ok'
+    );
+  } catch (e) {
+    showPlaceholder(e.message, '⚠', true);
+    setStatus('Error: ' + e.message, 'err');
+  }
+}
+
+// ── Render results table ──────────────────────────────────────────────────────
+
+function renderResults(data) {
+  const ph  = document.getElementById('ph');
+  const tbl = document.getElementById('results-table');
+
+  if (!data.columns || !data.columns.length) {
+    showPlaceholder('Query returned no columns.', 'ℹ');
+    return;
+  }
+
+  ph.style.display  = 'none';
+  tbl.style.display = 'table';
+
+  const thead = '<thead><tr>' +
+    data.columns.map(c => `<th>${escHtml(c)}</th>`).join('') +
+    '</tr></thead>';
+
+  const tbody = '<tbody>' +
+    data.rows.map(row =>
+      '<tr>' +
+      data.columns.map(col => {
+        const v = row[col];
+        if (v === null || v === undefined) return '<td class="is-null">NULL</td>';
+        if (typeof v === 'boolean') return `<td class="is-bool">${v}</td>`;
+        if (typeof v === 'number') return `<td class="is-num">${v}</td>`;
+        const str = String(v);
+        return `<td title="${escAttr(str)}">${escHtml(str)}</td>`;
+      }).join('') +
+      '</tr>'
+    ).join('') +
+    '</tbody>';
+
+  tbl.innerHTML = thead + tbody;
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+function escAttr(s) {
+  return String(s).replace(/"/g, '&quot;');
+}
+
+// ── Keyboard shortcuts ────────────────────────────────────────────────────────
+
+document.getElementById('sql-editor').addEventListener('keydown', e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+    e.preventDefault();
+    runQuery();
+    return;
+  }
+  if (e.key === 'F5') {
+    e.preventDefault();
+    runQuery();
+    return;
+  }
+  // Tab → 2 spaces
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const el = e.target;
+    const s  = el.selectionStart;
+    el.value = el.value.slice(0, s) + '  ' + el.value.slice(el.selectionEnd);
+    el.selectionStart = el.selectionEnd = s + 2;
+  }
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'F5' && document.activeElement !== document.getElementById('sql-editor')) {
+    e.preventDefault();
+    runQuery();
+  }
+});
+
+// ── Buttons ───────────────────────────────────────────────────────────────────
+
+document.getElementById('btn-run').addEventListener('click', runQuery);
+document.getElementById('btn-clear').addEventListener('click', () => {
+  document.getElementById('sql-editor').value = '';
+  document.getElementById('sql-editor').focus();
+  state.browseTable = null;
+  document.getElementById('pagination').style.display = 'none';
+});
+document.getElementById('btn-refresh').addEventListener('click', loadTables);
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+
+loadTables();
+</script>
+</body>
+</html>

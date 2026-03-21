@@ -1,0 +1,148 @@
+
+
+SELECT
+{outer_select_geo}    CSR_FAILURES,
+    ROUND(100 * CSR_FAILURES        / NULLIF(SUM(CSR_FAILURES)        OVER (), 0), 4)  AS Weight_CSR_FAILURES,
+
+    NUMBER_SDCONG,
+   -- ROUND(100 * NUMBER_SDCONG / CSR_FAILURES, 2) AS 'WEIGHT_SDCONG_IN_CELL(%)',
+    ROUND(100 * NUMBER_SDCONG       / NULLIF(SUM(NUMBER_SDCONG)       OVER (), 0), 4)  AS 'GLOBAL_WEIGHT_SDCONG(%)',
+
+    NUMBER_OF_SDDROPS,
+   -- ROUND(100 * NUMBER_OF_SDDROPS / CSR_FAILURES, 2) AS 'WEIGHT_SDDROPS_IN_CELL(%)',
+    ROUND(100 * NUMBER_OF_SDDROPS   / NULLIF(SUM(NUMBER_OF_SDDROPS)   OVER (), 0), 4)  AS 'GLOBAL_WEIGHT_SDDROPS(%)',
+
+    TCH_ASSIGN_FAILS,
+   -- ROUND(100 * TCH_ASSIGN_FAILS / CSR_FAILURES, 2) AS 'WEIGHT_TCH_ASSIGN_IN_CELL(%)',
+    ROUND(100 * TCH_ASSIGN_FAILS    / NULLIF(SUM(TCH_ASSIGN_FAILS)    OVER (), 0), 4)  AS 'GLOBAL_WEIGHT_TCH_ASSIGN(%)',
+
+    NUMBER_OF_TCH_DROPS,
+   -- ROUND(100 * NUMBER_OF_TCH_DROPS / CSR_FAILURES, 2) AS 'WEIGHT_TCH_DROPS_IN_CELL(%)',
+    ROUND(100 * NUMBER_OF_TCH_DROPS / NULLIF(SUM(NUMBER_OF_TCH_DROPS) OVER (), 0), 4)  AS 'GLOBAL_WEIGHT_TCH_DROPS(%)',
+
+    ROUND(CSSR_ERICSSON,                   4)  AS CSSR_ERICSSON,
+    ROUND(CBR_ERICSSON,                    4)  AS CBR_ERICSSON,
+    ROUND(CDR_ERICSSON,                    4)  AS CDR_ERICSSON,
+    ROUND(CELL_AVAILABILITY_RATE_ERICSSON, 4)  AS CELL_AVAILABILITY_RATE_ERICSSON,
+    ROUND(TCH_AVAILABILITY_RATE_ERICSSON,  4)  AS TCH_AVAILABILITY_RATE_ERICSSON,
+    ROUND(DOWNTIME_MANUAL,                 4)  AS DOWNTIME_MANUAL,
+    ROUND(TCH_CONGESTION_RATE_ERICSSON,    4)  AS TCH_CONGESTION_RATE_ERICSSON,
+    ROUND(SDCCH_DROP_RATE_ERICSSON,        4)  AS SDCCH_DROP_RATE_ERICSSON,
+    ROUND(SDCCH_TRAFFIC_ERICSSON,          4)  AS SDCCH_TRAFFIC_ERICSSON,
+    ROUND(SDCCH_BLOCKING_RATE_ERICSSON,    4)  AS SDCCH_BLOCKING_RATE_ERICSSON,
+    ROUND(SDCCH_CONGESTION_RATE_ERICSSON,  4)  AS SDCCH_CONGESTION_RATE_ERICSSON,
+    ROUND(TRAFFIC_DATA_GB_ERICSSON,        4)  AS TRAFFIC_DATA_GB_ERICSSON,
+    ROUND(TRAFFIC_VOIX_ERICSSON,           4)  AS TRAFFIC_VOIX_ERICSSON
+
+FROM (
+    SELECT
+        {select_geo}
+        -- Failure counts
+        SUM(CCONGS)                                                                         AS NUMBER_SDCONG,
+        SUM(CNDROP) - SUM(CNRELCONG)                                                        AS NUMBER_OF_SDDROPS,
+        SUM(TASSALL) - SUM(TCASSALL)                                                        AS TCH_ASSIGN_FAILS,
+        SUM(TFNDROP) + SUM(THNDROP) + SUM(TFNDROPSUB) + SUM(THNDROPSUB)                    AS NUMBER_OF_TCH_DROPS,
+        SUM(CCONGS) + (SUM(CNDROP) - SUM(CNRELCONG)) + (SUM(TASSALL) - SUM(TCASSALL)) +
+        (SUM(TFNDROP) + SUM(THNDROP) + SUM(TFNDROPSUB) + SUM(THNDROPSUB))                  AS CSR_FAILURES,
+
+        -- CSSR (robust formula from second query above)
+        CASE
+          WHEN COALESCE(SUM(CAST(CCALLS AS DOUBLE)), 0) = 0
+            OR COALESCE(SUM(CAST(CMSESTAB AS DOUBLE)), 0) = 0
+            OR COALESCE(SUM(CAST(TASSALL AS DOUBLE)), 0) = 0
+            OR (  COALESCE(SUM(CAST(TFCASSALL AS DOUBLE)), 0)
+                + COALESCE(SUM(CAST(THCASSALL AS DOUBLE)), 0)
+                + COALESCE(SUM(CAST(TFCASSALLSUB AS DOUBLE)), 0)
+                + COALESCE(SUM(CAST(THCASSALLSUB AS DOUBLE)), 0)
+               ) = 0
+          THEN 0
+          ELSE
+            100.0
+            * (1.0 - (SUM(CAST(CCONGS AS DOUBLE)) / SUM(CAST(CCALLS AS DOUBLE))))
+            * (1.0 - ((SUM(CAST(CNDROP AS DOUBLE)) - SUM(CAST(CNRELCONG AS DOUBLE))) / SUM(CAST(CMSESTAB AS DOUBLE))))
+            * (SUM(CAST(TCASSALL AS DOUBLE)) / SUM(CAST(TASSALL AS DOUBLE)))
+            * (1.0 - (
+                (  SUM(CAST(TFNDROP AS DOUBLE)) + SUM(CAST(THNDROP AS DOUBLE))
+                 + SUM(CAST(TFNDROPSUB AS DOUBLE)) + SUM(CAST(THNDROPSUB AS DOUBLE)))
+                / (  SUM(CAST(TFCASSALL AS DOUBLE)) + SUM(CAST(THCASSALL AS DOUBLE))
+                   + SUM(CAST(TFCASSALLSUB AS DOUBLE)) + SUM(CAST(THCASSALLSUB AS DOUBLE)))
+              ))
+        END                                                                                  AS CSSR_ERICSSON,
+
+        -- Call Blocking Rate
+        100.0 * (
+          COALESCE(SUM(CAST(CNRELCONG AS DOUBLE)), 0)
+          + COALESCE(SUM(CAST(TFNRELCONG AS DOUBLE)), 0)
+          + COALESCE(SUM(CAST(TFNRELCONGSUB AS DOUBLE)), 0)
+          + COALESCE(SUM(CAST(THNRELCONG AS DOUBLE)), 0)
+          + COALESCE(SUM(CAST(THNRELCONGSUB AS DOUBLE)), 0)
+        ) / NULLIF(COALESCE(SUM(CAST(TASSALL AS DOUBLE)), 0), 0)                            AS CBR_ERICSSON,
+
+        -- Call Drop Rate
+        100.0 * (
+          COALESCE(SUM(CAST(THNDROP AS DOUBLE)), 0) +
+          COALESCE(SUM(CAST(THNDROPSUB AS DOUBLE)), 0) +
+          COALESCE(SUM(CAST(TFNDROP AS DOUBLE)), 0) +
+          COALESCE(SUM(CAST(TFNDROPSUB AS DOUBLE)), 0)
+        ) / NULLIF(
+          COALESCE(SUM(CAST(TFCASSALL AS DOUBLE)), 0) +
+          COALESCE(SUM(CAST(TFCASSALLSUB AS DOUBLE)), 0) +
+          COALESCE(SUM(CAST(THCASSALL AS DOUBLE)), 0) +
+          COALESCE(SUM(CAST(THCASSALLSUB AS DOUBLE)), 0),
+          0
+        )                                                                                    AS CDR_ERICSSON,
+
+        -- Cell Availability Rate
+        100.0 - (100.0 * COALESCE(SUM(CAST(TDWNACC AS DOUBLE)), 0) /
+          NULLIF(COALESCE(SUM(CAST(TDWNSCAN AS DOUBLE)), 0), 0))                            AS CELL_AVAILABILITY_RATE_ERICSSON,
+
+        -- TCH Channel Availability Rate
+        100.0 * (COALESCE(SUM(CAST(TAVAACC AS DOUBLE)), 0) /
+          NULLIF(COALESCE(SUM(CAST(TAVASCAN AS DOUBLE)), 0), 0)) /
+          (COALESCE(AVG(CAST(AVG_TNUCHCNT AS DOUBLE)), 1))                                  AS TCH_AVAILABILITY_RATE_ERICSSON,
+
+        -- Downtime Manual
+        COALESCE(SUM(CAST(HDWNACC AS DOUBLE)), 0)                                           AS DOWNTIME_MANUAL,
+
+        -- TCH Congestion Rate
+        100.0 * (
+          COALESCE(SUM(CAST(CNRELCONG AS DOUBLE)), 0) +
+          COALESCE(SUM(CAST(TFNRELCONG AS DOUBLE)), 0) +
+          COALESCE(SUM(CAST(TFNRELCONGSUB AS DOUBLE)), 0) +
+          COALESCE(SUM(CAST(THNRELCONG AS DOUBLE)), 0) +
+          COALESCE(SUM(CAST(THNRELCONGSUB AS DOUBLE)), 0)
+        ) / NULLIF(COALESCE(SUM(CAST(TASSALL AS DOUBLE)), 0), 0)                            AS TCH_CONGESTION_RATE_ERICSSON,
+
+        -- SDCCH Drop Rate
+        100.0 * COALESCE(SUM(CAST(CNDROP AS DOUBLE)), 0) /
+          NULLIF(COALESCE(SUM(CAST(CMSESTAB AS DOUBLE)), 0), 0)                             AS SDCCH_DROP_RATE_ERICSSON,
+
+        -- SDCCH Traffic (Erlangs)
+        COALESCE(SUM(CAST(CTRALACC AS DOUBLE)), 0) /
+          NULLIF(COALESCE(SUM(CAST(CNSCAN AS DOUBLE)), 0), 0)                               AS SDCCH_TRAFFIC_ERICSSON,
+
+        -- SDCCH Blocking Rate
+        100.0 * COALESCE(SUM(CAST(CCONGS AS DOUBLE)), 0) /
+          NULLIF(COALESCE(SUM(CAST(CCALLS AS DOUBLE)), 0), 0)                               AS SDCCH_BLOCKING_RATE_ERICSSON,
+
+        -- SDCCH Congestion Rate
+        100.0 * (COALESCE(SUM(CAST(CCONGS AS DOUBLE)), 0) + COALESCE(SUM(CAST(CCONGSSUB AS DOUBLE)), 0)) /
+          NULLIF(COALESCE(SUM(CAST(CCALLS AS DOUBLE)), 0), 0)                               AS SDCCH_CONGESTION_RATE_ERICSSON,
+
+        COALESCE(SUM(CAST(TRAFFIC_DATA_GB AS DOUBLE)), 0)                                   AS TRAFFIC_DATA_GB_ERICSSON,
+        COALESCE(SUM(CAST(TRAFFIC_VOIX AS DOUBLE)), 0)                                      AS TRAFFIC_VOIX_ERICSSON
+
+    FROM hourly_ericsson_arcep_2g_counters e
+    {join_ept}
+    WHERE e.DATE BETWEEN '{start_date}' AND '{end_date}'
+    {time_filter}
+    {group_by}
+) AS T1
+{order_by}
+
+
+
+
+
+
+

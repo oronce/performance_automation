@@ -61,6 +61,8 @@ document.addEventListener('DOMContentLoaded', () => {
   bindDateControls();
   bindSearch();
   loadAll();
+  initSectionNav();
+  initCaFilters();
 });
 
 function setDefaultDates(days) {
@@ -382,4 +384,367 @@ function updateRange() {
 
 function capitalize(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// =============================================================================
+// SECTION NAVIGATION
+// =============================================================================
+
+let currentSection = 'kpi';
+
+function initSectionNav() {
+  document.querySelectorAll('.btn-section').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const section = btn.dataset.section;
+      if (section === currentSection) return;
+      currentSection = section;
+      document.querySelectorAll('.btn-section').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('kpi-section').style.display  = section === 'kpi'  ? '' : 'none';
+      document.getElementById('cssr-section').style.display = section === 'cssr' ? '' : 'none';
+      if (section === 'cssr') loadCssrAnalysis();
+    });
+  });
+}
+
+// =============================================================================
+// CSSR ANALYSIS — STATE & INIT
+// =============================================================================
+
+const caState = {
+  startDate: '',
+  endDate:   '',
+  timeStart: '',
+  timeEnd:   '',
+  level:     'cell_name',
+  vendor:    'ERICSSON',
+};
+
+let pieEricssonChart = null;
+let pieHuaweiChart   = null;
+let barChart         = null;
+
+function initCaFilters() {
+  // Default: last 7 days
+  const today = new Date();
+  const start = new Date(today);
+  start.setDate(today.getDate() - 6);
+  caState.startDate = fmt(start);
+  caState.endDate   = fmt(today);
+  document.getElementById('ca-start-date').value = caState.startDate;
+  document.getElementById('ca-end-date').value   = caState.endDate;
+  updateCaRange();
+
+  document.getElementById('ca-apply-btn').addEventListener('click', () => {
+    const s = document.getElementById('ca-start-date').value;
+    const e = document.getElementById('ca-end-date').value;
+    if (!s || !e || s > e) { showCaError('Invalid date range.'); return; }
+    clearCaError();
+    caState.startDate = s;
+    caState.endDate   = e;
+    caState.timeStart = document.getElementById('ca-time-start').value || '';
+    caState.timeEnd   = document.getElementById('ca-time-end').value   || '';
+    updateCaRange();
+    loadCssrAnalysis();
+  });
+
+  document.querySelectorAll('.ca-level').forEach(btn => {
+    btn.addEventListener('click', () => {
+      caState.level = btn.dataset.caLevel;
+      document.querySelectorAll('.ca-level').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      loadBarChart();
+    });
+  });
+
+  document.querySelectorAll('.ca-vendor').forEach(btn => {
+    btn.addEventListener('click', () => {
+      caState.vendor = btn.dataset.caVendor;
+      document.querySelectorAll('.ca-vendor').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      loadBarChart();
+    });
+  });
+
+  document.getElementById('open-map-btn').addEventListener('click', () => {
+    const params = new URLSearchParams({
+      start_date: caState.startDate,
+      end_date:   caState.endDate,
+      level:      caState.level,
+    });
+    if (caState.timeStart) params.set('time_start', caState.timeStart);
+    if (caState.timeEnd)   params.set('time_end',   caState.timeEnd);
+    window.open('/static/map.html?' + params.toString(), '_blank');
+  });
+}
+
+// =============================================================================
+// CSSR ANALYSIS — FETCH
+// =============================================================================
+
+async function fetchWorstCells(script, aggregation_level, limit) {
+  const params = new URLSearchParams({
+    script,
+    start_date: caState.startDate,
+    end_date:   caState.endDate,
+  });
+  if (aggregation_level) params.set('aggregation_level', aggregation_level);
+  if (caState.timeStart) params.set('time_start', caState.timeStart);
+  if (caState.timeEnd)   params.set('time_end',   caState.timeEnd);
+  if (limit)             params.set('limit', limit);
+
+  const res  = await fetch('/worst_cells?' + params.toString());
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.detail || 'API error');
+  return json.data || [];
+}
+
+// =============================================================================
+// CSSR ANALYSIS — LOAD
+// =============================================================================
+
+async function loadCssrAnalysis() {
+  showCaLoading(true);
+  clearCaError();
+
+  try {
+    const [ericssonPie, huaweiPie] = await Promise.all([
+      fetchWorstCells('2g_ericsson_worst_cell', null, null),
+      fetchWorstCells('2g_huawei_worst_cell',   null, null),
+    ]);
+
+    renderPieChart(
+      'pie-ericsson-wrapper', 'pie-ericsson',
+      ericssonPie[0] || null, 'ericsson'
+    );
+    renderPieChart(
+      'pie-huawei-wrapper', 'pie-huawei',
+      huaweiPie[0] || null, 'huawei'
+    );
+
+    await loadBarChart();
+
+  } catch (err) {
+    showCaError(err.message);
+  } finally {
+    showCaLoading(false);
+  }
+}
+
+async function loadBarChart() {
+  const script = caState.vendor === 'ERICSSON'
+    ? '2g_ericsson_worst_cell'
+    : '2g_huawei_worst_cell';
+
+  const levelLabel = caState.level.replace('_', ' ');
+  const vendorLabel = caState.vendor === 'ERICSSON' ? 'Ericsson' : 'Huawei';
+  document.getElementById('bar-title').textContent =
+    `Top 50 Worst ${capitalize(levelLabel)}s — ${vendorLabel} — by CSR Failures`;
+
+  try {
+    const rows = await fetchWorstCells(script, caState.level, 50);
+    renderWorstCellsBar(rows);
+  } catch (err) {
+    showCaError(err.message);
+  }
+}
+
+// =============================================================================
+// CSSR ANALYSIS — PIE CHART
+// =============================================================================
+
+const CA_PIE_CFG = {
+  ericsson: {
+    labels: ['SDCCH Congestion', 'SDCCH Drops', 'TCH Assign Fails', 'TCH Drops'],
+    cols:   ['NUMBER_SDCONG', 'NUMBER_OF_SDDROPS', 'TCH_ASSIGN_FAILS', 'NUMBER_OF_TCH_DROPS'],
+    colors: ['#e74c3c', '#e67e22', '#3498db', '#9b59b6'],
+    cssrCol: 'CSSR_ERICSSON',
+  },
+  huawei: {
+    labels: ['SDCCH Assign Fails', 'SDCCH Drops', 'TCH Assign Fails', 'TCH Drops'],
+    cols:   ['SDCCH_ASSIGN_FAILS', 'SDCCH_DROPS', 'TCH_ASSIGN_FAILS', 'TCH_DROPS'],
+    colors: ['#e74c3c', '#e67e22', '#3498db', '#9b59b6'],
+    cssrCol: 'CSSR_HUAWEI',
+  },
+};
+
+function renderPieChart(wrapperId, canvasId, row, vendor) {
+  if (vendor === 'ericsson' && pieEricssonChart) { pieEricssonChart.destroy(); pieEricssonChart = null; }
+  if (vendor === 'huawei'   && pieHuaweiChart)   { pieHuaweiChart.destroy();   pieHuaweiChart   = null; }
+
+  const wrapper = document.getElementById(wrapperId);
+
+  if (!row) {
+    wrapper.innerHTML = '<p class="no-data">No data for this period</p>';
+    return;
+  }
+
+  if (!document.getElementById(canvasId)) {
+    wrapper.innerHTML = `<canvas id="${canvasId}"></canvas>`;
+  }
+
+  const cfg    = CA_PIE_CFG[vendor];
+  const values = cfg.cols.map(c => row[c] ?? 0);
+  const total  = values.reduce((a, b) => a + b, 0);
+  const cssrVal = row[cfg.cssrCol];
+  const cssrTxt = cssrVal !== null && cssrVal !== undefined
+    ? `CSSR: ${parseFloat(cssrVal).toFixed(2)}%`
+    : 'CSSR: N/A';
+
+  const chart = new Chart(
+    document.getElementById(canvasId).getContext('2d'),
+    {
+      type: 'doughnut',
+      data: {
+        labels: cfg.labels,
+        datasets: [{
+          data:            values,
+          backgroundColor: cfg.colors,
+          borderWidth:     2,
+          borderColor:     '#fff',
+        }],
+      },
+      options: {
+        responsive:          true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            position: 'bottom',
+            labels:   { padding: 15, font: { size: 13 } },
+          },
+          tooltip: {
+            callbacks: {
+              label: c => {
+                const v   = c.parsed;
+                const pct = total > 0 ? (v / total * 100).toFixed(1) : 0;
+                return `${c.label}: ${Number(v).toLocaleString()} (${pct}%)`;
+              },
+            },
+          },
+          title: {
+            display: true,
+            text:    cssrTxt,
+            font:    { size: 14, weight: '600' },
+            color:   '#2c3e50',
+            padding: { bottom: 10 },
+          },
+        },
+      },
+    }
+  );
+
+  if (vendor === 'ericsson') pieEricssonChart = chart;
+  else                       pieHuaweiChart   = chart;
+}
+
+// =============================================================================
+// CSSR ANALYSIS — HORIZONTAL BAR CHART
+// =============================================================================
+
+function renderWorstCellsBar(rows) {
+  if (barChart) { barChart.destroy(); barChart = null; }
+
+  const wrapper = document.getElementById('worst-cells-bar-wrapper');
+
+  if (!rows.length) {
+    wrapper.innerHTML = '<p class="no-data">No data for this period</p>';
+    return;
+  }
+
+  if (!document.getElementById('worst-cells-bar')) {
+    wrapper.innerHTML = '<canvas id="worst-cells-bar"></canvas>';
+  }
+
+  // Dynamic height: ~22px per row, minimum 300px
+  const h = Math.max(300, rows.length * 24);
+  wrapper.style.height = h + 'px';
+
+  const cssrKey  = caState.vendor === 'ERICSSON' ? 'CSSR_ERICSSON' : 'CSSR_HUAWEI';
+  const availKey = caState.vendor === 'ERICSSON' ? 'CELL_AVAILABILITY_RATE_ERICSSON' : 'CELL_AVAILABILITY_RATE_HUAWEI';
+  const cdrKey   = caState.vendor === 'ERICSSON' ? 'CDR_ERICSSON' : 'CDR_HUAWEI';
+  const cbrKey   = caState.vendor === 'ERICSSON' ? 'CBR_ERICSSON' : 'CBR_HUAWEI';
+
+  const labels    = rows.map(r => r[caState.level] || 'Unknown');
+  const values    = rows.map(r => r['CSR_FAILURES'] ?? 0);
+  const barColors = rows.map(r => {
+    const cssr = r[cssrKey];
+    return (cssr !== null && cssr !== undefined && parseFloat(cssr) < 99) ? '#e74c3c' : '#3498db';
+  });
+
+  barChart = new Chart(
+    document.getElementById('worst-cells-bar').getContext('2d'),
+    {
+      type: 'bar',
+      data: {
+        labels,
+        datasets: [{
+          label:           'CSR Failures',
+          data:            values,
+          backgroundColor: barColors,
+          borderWidth:     0,
+        }],
+      },
+      options: {
+        indexAxis:           'y',
+        responsive:          true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: c => {
+                const r    = rows[c.dataIndex];
+                const cssr = r[cssrKey];
+                const avail = r[availKey];
+                const cdr  = r[cdrKey];
+                const cbr  = r[cbrKey];
+                return [
+                  `CSR Failures: ${c.parsed.x}`,
+                  `CSSR: ${cssr  !== null && cssr  !== undefined ? parseFloat(cssr).toFixed(2)  : 'N/A'}%`,
+                  `Availability: ${avail !== null && avail !== undefined ? parseFloat(avail).toFixed(2) : 'N/A'}%`,
+                  `CDR: ${cdr   !== null && cdr   !== undefined ? parseFloat(cdr).toFixed(2)   : 'N/A'}%`,
+                  `CBR: ${cbr   !== null && cbr   !== undefined ? parseFloat(cbr).toFixed(2)   : 'N/A'}%`,
+                ];
+              },
+            },
+          },
+        },
+        scales: {
+          x: {
+            title:       { display: true, text: 'CSR Failures' },
+            beginAtZero: true,
+          },
+          y: {
+            ticks: { font: { size: 11 } },
+          },
+        },
+      },
+    }
+  );
+}
+
+// =============================================================================
+// CSSR ANALYSIS — UI HELPERS
+// =============================================================================
+
+function showCaLoading(on) {
+  document.getElementById('cssr-loading').style.display = on ? 'flex' : 'none';
+  document.getElementById('cssr-content').style.display = on ? 'none' : 'block';
+}
+
+function showCaError(msg) {
+  const el = document.getElementById('ca-error-msg');
+  el.textContent   = msg;
+  el.style.display = 'inline';
+}
+
+function clearCaError() {
+  const el = document.getElementById('ca-error-msg');
+  el.textContent   = '';
+  el.style.display = 'none';
+}
+
+function updateCaRange() {
+  document.getElementById('ca-current-range').textContent =
+    `${caState.startDate} → ${caState.endDate}`;
 }

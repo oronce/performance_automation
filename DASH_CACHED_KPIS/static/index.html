@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>2G KPI Dashboard</title>
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/static/style.css?v=2">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -14,109 +14,218 @@
       <p class="subtitle">CSSR · Availability · Packet Loss</p>
     </header>
 
-    <div class="filter-section">
-      <!-- Row 1: KPI + Vendor -->
-      <div class="filter-row">
-        <div class="filter-group">
-          <label>KPI</label>
-          <div class="btn-group">
-            <button class="btn btn-toggle active" data-kpi="CSSR">CSSR</button>
-            <button class="btn btn-toggle" data-kpi="AVAILABILITY">Availability</button>
-            <button class="btn btn-toggle" data-kpi="PACKET_LOSS">Packet Loss</button>
-          </div>
-        </div>
-        <div class="filter-group">
-          <label>Vendor</label>
-          <div class="btn-group">
-            <button class="btn btn-toggle active" data-vendor="ERICSSON">Ericsson</button>
-            <button class="btn btn-toggle" data-vendor="HUAWEI">Huawei</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Row 2: Granularity + Level + Quick select -->
-      <div class="filter-row">
-        <div class="filter-group">
-          <label>Granularity</label>
-          <div class="btn-group">
-            <button class="btn btn-toggle" data-granularity="DAILY">Daily</button>
-            <button class="btn btn-toggle active" data-granularity="HOURLY">Hourly</button>
-          </div>
-        </div>
-        <div class="filter-group">
-          <label>Breakdown Level</label>
-          <div class="btn-group">
-            <button class="btn btn-toggle active" data-level="commune">Commune</button>
-            <button class="btn btn-toggle" data-level="arrondissement">Arrondissement</button>
-          </div>
-        </div>
-        <div class="filter-group">
-          <label>Quick Select</label>
-          <div class="quick-buttons">
-            <button class="btn btn-quick active" data-days="2">2D</button>
-            <button class="btn btn-quick" data-days="3">3D</button>
-            <button class="btn btn-quick" data-days="5">5D</button>
-            <button class="btn btn-quick" data-days="7">7D</button>
-            <button class="btn btn-quick" data-days="8">8D</button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Row 3: Custom date range -->
-      <div class="filter-row">
-        <div class="filter-group">
-          <label>Custom Date Range</label>
-          <div class="date-inputs">
-            <input type="date" id="start-date" class="date-input">
-            <span>to</span>
-            <input type="date" id="end-date" class="date-input">
-            <button class="btn btn-primary" id="apply-btn">Apply</button>
-          </div>
-        </div>
-      </div>
-
-      <div class="filter-info">
-        <span id="current-range"></span>
-        <span id="error-msg" class="error-msg"></span>
-      </div>
+    <!-- Section Navigation -->
+    <div class="section-nav">
+      <button class="btn btn-section active" data-section="kpi">KPI Dashboard</button>
+      <button class="btn btn-section" data-section="cssr">CSSR Analysis</button>
     </div>
 
-    <!-- Loading -->
-    <div id="loading" class="loading">
-      <div class="spinner"></div>
-      <p>Loading data...</p>
-    </div>
+    <!-- ══════════════════════════════════════════════════════════
+         KPI SECTION
+    ══════════════════════════════════════════════════════════ -->
+    <div id="kpi-section">
 
-    <!-- Charts -->
-    <div id="main-content" style="display:none;">
+      <div class="filter-section">
+        <!-- Row 1: KPI + Vendor -->
+        <div class="filter-row">
+          <div class="filter-group">
+            <label>KPI</label>
+            <div class="btn-group">
+              <button class="btn btn-toggle active" data-kpi="CSSR">CSSR</button>
+              <button class="btn btn-toggle" data-kpi="AVAILABILITY">Availability</button>
+              <button class="btn btn-toggle" data-kpi="PACKET_LOSS">Packet Loss</button>
+            </div>
+          </div>
+          <div class="filter-group">
+            <label>Vendor</label>
+            <div class="btn-group">
+              <button class="btn btn-toggle active" data-vendor="ERICSSON">Ericsson</button>
+              <button class="btn btn-toggle" data-vendor="HUAWEI">Huawei</button>
+            </div>
+          </div>
+        </div>
 
-      <!-- Overview: network-wide -->
-      <div class="chart-card">
-        <h3 class="chart-title" id="overview-title">CSSR — Network</h3>
-        <div class="chart-wrapper" id="overview-wrapper">
-          <canvas id="overview-chart"></canvas>
+        <!-- Row 2: Granularity + Level + Quick select -->
+        <div class="filter-row">
+          <div class="filter-group">
+            <label>Granularity</label>
+            <div class="btn-group">
+              <button class="btn btn-toggle" data-granularity="DAILY">Daily</button>
+              <button class="btn btn-toggle active" data-granularity="HOURLY">Hourly</button>
+            </div>
+          </div>
+          <div class="filter-group">
+            <label>Breakdown Level</label>
+            <div class="btn-group">
+              <button class="btn btn-toggle active" data-level="commune">Commune</button>
+              <button class="btn btn-toggle" data-level="arrondissement">Arrondissement</button>
+            </div>
+          </div>
+          <div class="filter-group">
+            <label>Quick Select</label>
+            <div class="quick-buttons">
+              <button class="btn btn-quick active" data-days="2">2D</button>
+              <button class="btn btn-quick" data-days="3">3D</button>
+              <button class="btn btn-quick" data-days="5">5D</button>
+              <button class="btn btn-quick" data-days="7">7D</button>
+              <button class="btn btn-quick" data-days="8">8D</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Row 3: Custom date range -->
+        <div class="filter-row">
+          <div class="filter-group">
+            <label>Custom Date Range</label>
+            <div class="date-inputs">
+              <input type="date" id="start-date" class="date-input">
+              <span>to</span>
+              <input type="date" id="end-date" class="date-input">
+              <button class="btn btn-primary" id="apply-btn">Apply</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="filter-info">
+          <span id="current-range"></span>
+          <span id="error-msg" class="error-msg"></span>
         </div>
       </div>
 
-      <!-- Breakdown: one chart per location -->
-      <div style="margin-top:30px;">
-        <h2 class="section-title" id="breakdown-section-title">CSSR — By Commune</h2>
+      <!-- Loading -->
+      <div id="loading" class="loading">
+        <div class="spinner"></div>
+        <p>Loading data...</p>
+      </div>
 
-        <!-- Search / filter bar -->
-        <div class="search-bar">
-          <input type="text" id="loc-search" class="loc-search-input" placeholder="Search location...">
-          <button class="btn btn-quick" id="search-clear">Clear</button>
-          <span id="loc-count" class="loc-count"></span>
+      <!-- Charts -->
+      <div id="main-content" style="display:none;">
+
+        <!-- Overview: network-wide -->
+        <div class="chart-card">
+          <h3 class="chart-title" id="overview-title">CSSR — Network</h3>
+          <div class="chart-wrapper" id="overview-wrapper">
+            <canvas id="overview-chart"></canvas>
+          </div>
         </div>
 
-        <div class="charts-grid" id="breakdown-container">
-          <!-- injected by script.js -->
+        <!-- Breakdown: one chart per location -->
+        <div style="margin-top:30px;">
+          <h2 class="section-title" id="breakdown-section-title">CSSR — By Commune</h2>
+
+          <div class="search-bar">
+            <input type="text" id="loc-search" class="loc-search-input" placeholder="Search location...">
+            <button class="btn btn-quick" id="search-clear">Clear</button>
+            <span id="loc-count" class="loc-count"></span>
+          </div>
+
+          <div class="charts-grid" id="breakdown-container"></div>
+        </div>
+
+      </div>
+    </div><!-- /#kpi-section -->
+
+    <!-- ══════════════════════════════════════════════════════════
+         CSSR ANALYSIS SECTION
+    ══════════════════════════════════════════════════════════ -->
+    <div id="cssr-section" style="display:none;">
+
+      <div class="filter-section">
+        <div class="filter-row">
+          <div class="filter-group">
+            <label>Date Range</label>
+            <div class="date-inputs">
+              <input type="date" id="ca-start-date" class="date-input">
+              <span>to</span>
+              <input type="date" id="ca-end-date" class="date-input">
+            </div>
+          </div>
+          <div class="filter-group">
+            <label>Time Window (optional)</label>
+            <div class="date-inputs">
+              <input type="time" id="ca-time-start" class="date-input" placeholder="HH:MM">
+              <span>to</span>
+              <input type="time" id="ca-time-end" class="date-input" placeholder="HH:MM">
+            </div>
+          </div>
+          <div class="filter-group" style="align-self:flex-end;">
+            <button class="btn btn-primary" id="ca-apply-btn">Apply</button>
+          </div>
+        </div>
+        <div class="filter-info">
+          <span id="ca-current-range"></span>
+          <span id="ca-error-msg" class="error-msg"></span>
         </div>
       </div>
 
-    </div>
-  </div>
+      <!-- Loading -->
+      <div id="cssr-loading" class="loading">
+        <div class="spinner"></div>
+        <p>Loading CSSR data...</p>
+      </div>
 
-  <script src="/static/script.js"></script>
+      <!-- Content -->
+      <div id="cssr-content" style="display:none;">
+
+        <!-- Pie Charts Row -->
+        <div class="ca-pie-grid">
+          <div class="chart-card">
+            <h3 class="chart-title">Ericsson — CSSR Failure Components</h3>
+            <div class="chart-wrapper ca-pie" id="pie-ericsson-wrapper">
+              <canvas id="pie-ericsson"></canvas>
+            </div>
+          </div>
+          <div class="chart-card">
+            <h3 class="chart-title">Huawei — CSSR Failure Components</h3>
+            <div class="chart-wrapper ca-pie" id="pie-huawei-wrapper">
+              <canvas id="pie-huawei"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Worst Cells Bar Chart -->
+        <div style="margin-top:20px;">
+          <div class="filter-section" style="margin-bottom:16px; padding:16px 20px;">
+            <div class="filter-row" style="margin-bottom:0;">
+              <div class="filter-group">
+                <label>Breakdown Level</label>
+                <div class="btn-group">
+                  <button class="btn btn-toggle ca-level active" data-ca-level="cell_name">Cell</button>
+                  <button class="btn btn-toggle ca-level" data-ca-level="site_name">Site</button>
+                  <button class="btn btn-toggle ca-level" data-ca-level="commune">Commune</button>
+                  <button class="btn btn-toggle ca-level" data-ca-level="arrondissement">Arrondissement</button>
+                  <button class="btn btn-toggle ca-level" data-ca-level="departement">Département</button>
+                  <button class="btn btn-toggle ca-level" data-ca-level="controller_name">Controller</button>
+                </div>
+              </div>
+              <div class="filter-group">
+                <label>Vendor</label>
+                <div class="btn-group">
+                  <button class="btn btn-toggle ca-vendor active" data-ca-vendor="ERICSSON">Ericsson</button>
+                  <button class="btn btn-toggle ca-vendor" data-ca-vendor="HUAWEI">Huawei</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="chart-card">
+            <h3 class="chart-title" id="bar-title">Top 50 Worst Cells — Ericsson</h3>
+            <div id="worst-cells-bar-wrapper" class="chart-wrapper ca-bar">
+              <canvas id="worst-cells-bar"></canvas>
+            </div>
+          </div>
+        </div>
+
+        <!-- Map Button -->
+        <div style="text-align:center; margin-top:24px; margin-bottom:8px;">
+          <button class="btn btn-map" id="open-map-btn">&#128506; Open Map View</button>
+        </div>
+
+      </div><!-- /#cssr-content -->
+    </div><!-- /#cssr-section -->
+
+  </div><!-- /.container -->
+
+  <script src="/static/script.js?v=2"></script>
 </body>
 </html>

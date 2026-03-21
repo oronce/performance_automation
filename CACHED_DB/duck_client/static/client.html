@@ -1,0 +1,1117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DuckDB Client</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:           #1a1b26;
+  --sidebar-bg:   #13131c;
+  --panel-bg:     #1e2030;
+  --border:       #2a2b40;
+  --border-light: #1e1f30;
+  --tab-bg:       #11111a;
+  --tab-active:   #1e2030;
+  --accent:       #7aa2f7;
+  --accent-light: #1a2a45;
+  --accent2:      #bb9af7;
+  --text:         #cdd6f4;
+  --text-dim:     #6c7086;
+  --text-muted:   #313244;
+  --success:      #a6e3a1;
+  --error:        #f38ba8;
+  --warning:      #f9e2af;
+  --header-h:     44px;
+  --tab-h:        34px;
+  --toolbar-h:    40px;
+  --status-h:     27px;
+  --font-mono:    'Consolas', 'Cascadia Code', 'Monaco', monospace;
+  --font-ui:      'Segoe UI', system-ui, sans-serif;
+  /* editor metrics — must be identical in highlight-layer and sql-editor */
+  --ed-pad-v:     10px;
+  --ed-pad-h:     14px;
+  --ed-size:      13px;
+  --ed-lh:        1.65;
+}
+
+html, body {
+  height: 100%; font-family: var(--font-ui); font-size: 13px; font-weight: 500;
+  background: var(--bg); color: var(--text); overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── header ─────────────────────────────────────── */
+header {
+  height: var(--header-h); background: var(--sidebar-bg); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; padding: 0 14px; gap: 10px; flex-shrink: 0;
+}
+header .logo  { font-size: 20px; }
+header .title { font-weight: 700; font-size: 14px; color: var(--accent); letter-spacing: .3px; }
+header .db-path {
+  font-family: var(--font-mono); font-size: 11px; color: var(--text-dim); font-weight: 400;
+  max-width: 500px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 2px 8px;
+}
+header .spacer { flex: 1; }
+header .conn-dot {
+  width: 9px; height: 9px; border-radius: 50%; background: var(--text-muted);
+  flex-shrink: 0; transition: background .3s;
+}
+header .conn-dot.ok  { background: var(--success); box-shadow: 0 0 0 3px rgba(166,227,161,.2); }
+header .conn-dot.err { background: var(--error);   box-shadow: 0 0 0 3px rgba(243,139,168,.2); }
+
+/* ── layout ─────────────────────────────────────── */
+#layout { display: flex; height: calc(100vh - var(--header-h)); overflow: hidden; }
+
+/* ── sidebar ─────────────────────────────────────── */
+#sidebar {
+  width: 240px; min-width: 140px; max-width: 520px;
+  background: var(--sidebar-bg); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0;
+}
+#sidebar-header {
+  padding: 8px 12px; font-size: 10px; font-weight: 700; letter-spacing: 1px;
+  text-transform: uppercase; color: var(--text-dim); border-bottom: 1px solid var(--border);
+  flex-shrink: 0; display: flex; align-items: center; justify-content: space-between;
+}
+.s-btn {
+  font-size: 11px; font-weight: 500; padding: 2px 8px; background: var(--border);
+  border: none; border-radius: 4px; color: var(--text-dim); cursor: pointer; font-family: var(--font-ui);
+}
+.s-btn:hover { background: #35364f; color: var(--text); }
+
+#table-list { overflow-y: auto; flex: 1; }
+#table-list::-webkit-scrollbar { width: 4px; }
+#table-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.t-item { border-bottom: 1px solid var(--border-light); }
+.t-row {
+  display: flex; align-items: center; padding: 7px 10px;
+  cursor: pointer; gap: 6px; transition: background .1s; user-select: none;
+}
+.t-row:hover  { background: #1c1d2e; }
+.t-row.active { background: var(--accent-light); border-left: 3px solid var(--accent); padding-left: 7px; }
+.t-row .t-icon  { font-size: 12px; flex-shrink: 0; color: var(--text-dim); }
+.t-row .t-name  { flex: 1; font-size: 12px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.t-row .t-count { font-size: 10px; color: var(--text-dim); font-family: var(--font-mono); flex-shrink: 0; font-weight: 400; }
+
+.t-schema { display: none; background: #0f1018; }
+.t-schema.open { display: block; }
+.t-schema .s-col {
+  display: flex; align-items: center; padding: 3px 10px 3px 26px; gap: 8px;
+  font-size: 11px; font-family: var(--font-mono); font-weight: 400;
+  border-bottom: 1px solid var(--border-light);
+}
+.t-schema .s-col:last-child { border-bottom: none; }
+.t-schema .s-name { color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.t-schema .s-type { color: var(--accent2); font-size: 10px; flex-shrink: 0; }
+
+/* ── sidebar resize ─────────────────────────────── */
+#sidebar-resizer {
+  width: 5px; background: transparent; cursor: col-resize; flex-shrink: 0; position: relative; z-index: 10;
+}
+#sidebar-resizer::after { content:''; position:absolute; top:0; bottom:0; left:2px; width:1px; background:var(--border); }
+#sidebar-resizer:hover, #sidebar-resizer.dragging { background: var(--accent-light); }
+#sidebar-resizer:hover::after, #sidebar-resizer.dragging::after { background: var(--accent); }
+
+/* ── main ────────────────────────────────────────── */
+#main { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+
+/* ── tabs ────────────────────────────────────────── */
+#tab-bar {
+  height: var(--tab-h); display: flex; align-items: flex-end;
+  background: var(--tab-bg); border-bottom: 1px solid var(--border);
+  padding: 0 4px; gap: 2px; overflow-x: auto; flex-shrink: 0;
+}
+#tab-bar::-webkit-scrollbar { height: 3px; }
+#tab-bar::-webkit-scrollbar-thumb { background: var(--border); }
+
+.tab {
+  display: flex; align-items: center; gap: 6px; padding: 5px 12px 5px 10px;
+  background: var(--tab-bg); border: 1px solid transparent; border-bottom: none;
+  border-radius: 5px 5px 0 0; cursor: pointer; flex-shrink: 0;
+  font-size: 12px; color: var(--text-dim); user-select: none;
+  transition: background .1s, color .1s; max-width: 160px;
+}
+.tab:hover { background: #1c1d2e; color: var(--text); }
+.tab.active { background: var(--tab-active); border-color: var(--border); color: var(--text); font-weight: 600; }
+.tab .tab-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tab .tab-close { font-size: 14px; color: var(--text-muted); line-height: 1; padding: 0 1px; border-radius: 3px; flex-shrink: 0; }
+.tab .tab-close:hover { background: var(--border); color: var(--text); }
+#btn-add-tab {
+  height: 24px; width: 24px; margin-bottom: 2px; flex-shrink: 0;
+  background: transparent; border: 1px solid transparent; border-radius: 4px;
+  cursor: pointer; font-size: 16px; color: var(--text-dim); line-height: 1;
+  display: flex; align-items: center; justify-content: center;
+}
+#btn-add-tab:hover { background: var(--border); color: var(--text); }
+
+/* ── editor ──────────────────────────────────────── */
+#editor-wrap { height: 34%; min-height: 60px; flex-shrink: 0; position: relative; overflow: hidden; }
+
+/* Highlight layer — renders coloured HTML behind the textarea */
+#highlight-layer {
+  position: absolute; inset: 0;
+  padding: var(--ed-pad-v) var(--ed-pad-h);
+  font-family: var(--font-mono); font-size: var(--ed-size); line-height: var(--ed-lh);
+  tab-size: 2; white-space: pre-wrap; word-break: break-all; overflow-wrap: anywhere;
+  overflow: hidden; pointer-events: none;
+  background: var(--panel-bg); color: var(--text);
+  border-bottom: 1px solid var(--border);
+  font-weight: 400; margin: 0; z-index: 0;
+}
+/* SQL syntax colours */
+.hl-kw      { color: #89b4fa; font-weight: 700; }   /* keywords  — blue  */
+.hl-fn      { color: #cba6f7; }                      /* functions — mauve */
+.hl-string  { color: #a6e3a1; }                      /* strings   — green */
+.hl-number  { color: #fab387; }                      /* numbers   — peach */
+.hl-comment { color: #4a4f6a; font-style: italic; }  /* comments  — dim   */
+.hl-ident   { color: #94e2d5; }                      /* "quoted"  — teal  */
+
+/* Transparent textarea sits on top; caret stays visible */
+#sql-editor {
+  position: absolute; inset: 0; resize: none;
+  background: transparent; color: transparent; caret-color: var(--text);
+  border: none; border-bottom: 1px solid var(--border); outline: none;
+  padding: var(--ed-pad-v) var(--ed-pad-h);
+  font-family: var(--font-mono); font-size: var(--ed-size); line-height: var(--ed-lh);
+  tab-size: 2; font-weight: 400; z-index: 1;
+}
+#sql-editor::placeholder { color: var(--text-muted); }
+/* Semi-transparent selection so highlight colours show through */
+#sql-editor::selection { background: rgba(122,162,247,.25); }
+
+/* ── editor/results resize ───────────────────────── */
+#editor-resizer {
+  height: 5px; background: transparent; cursor: row-resize; flex-shrink: 0; position: relative; z-index: 10;
+}
+#editor-resizer::after { content:''; position:absolute; left:0; right:0; top:2px; height:1px; background:var(--border); }
+#editor-resizer:hover, #editor-resizer.dragging { background: var(--accent-light); }
+#editor-resizer:hover::after, #editor-resizer.dragging::after { background: var(--accent); }
+
+/* ── toolbar ─────────────────────────────────────── */
+#toolbar {
+  height: var(--toolbar-h); display: flex; align-items: center;
+  padding: 0 12px; gap: 6px;
+  background: var(--sidebar-bg); border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.btn {
+  padding: 4px 12px; border: 1px solid transparent; border-radius: 4px;
+  cursor: pointer; font-size: 12px; font-weight: 600; font-family: var(--font-ui);
+  transition: opacity .12s, background .12s;
+}
+.btn:hover { opacity: .85; }
+.btn-run     { background: var(--accent); color: #1a1b26; }
+.btn-run-sel { background: #1e2a45; color: #89b4fa; border-color: #2a3f6a; }
+.btn-run-sel:hover { background: #253354; opacity: 1; }
+.btn-clear   { background: var(--border); color: var(--text-dim); }
+.btn-save    { background: var(--border); color: var(--text-dim); }
+.btn-queries { background: var(--border); color: var(--text-dim); }
+.btn-queries.active { background: var(--accent-light); color: var(--accent); border-color: #2a3f6a; }
+
+.shortcut-hint { display: flex; align-items: center; gap: 3px; font-size: 11px; color: var(--text-muted); font-weight: 400; }
+kbd {
+  background: var(--border); border-radius: 3px; padding: 1px 5px;
+  font-size: 10px; font-family: var(--font-mono); color: var(--text-dim); font-weight: 400;
+}
+.limit-wrap { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-dim); font-weight: 400; }
+.limit-wrap input {
+  width: 70px; padding: 3px 6px; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 4px; color: var(--text);
+  font-size: 12px; font-family: var(--font-mono); outline: none; font-weight: 400;
+}
+.limit-wrap input:focus { border-color: var(--accent); }
+
+/* ── results ─────────────────────────────────────── */
+#results-wrap {
+  flex: 1; overflow: auto; background: var(--panel-bg); position: relative; min-height: 0;
+}
+#results-wrap::-webkit-scrollbar { width: 6px; height: 6px; }
+#results-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+#results-wrap::-webkit-scrollbar-track { background: var(--bg); }
+
+.placeholder {
+  display: flex; align-items: center; justify-content: center;
+  height: 100%; color: var(--text-muted); font-size: 13px; flex-direction: column; gap: 8px;
+}
+.placeholder .ph-icon { font-size: 28px; opacity: .3; }
+
+#results-table { width: 100%; border-collapse: collapse; font-size: 12px; font-family: var(--font-mono); display: none; font-weight: 400; }
+#results-table th {
+  position: sticky; top: 0; z-index: 2; background: #131320;
+  border-bottom: 2px solid var(--accent); border-right: 1px solid var(--border);
+  padding: 6px 12px; text-align: left; font-size: 11px; font-weight: 700;
+  color: var(--accent); white-space: nowrap; text-transform: uppercase; letter-spacing: .3px;
+}
+#results-table td {
+  padding: 4px 12px; border-bottom: 1px solid var(--border-light); border-right: 1px solid var(--border-light);
+  white-space: nowrap; max-width: 340px; overflow: hidden; text-overflow: ellipsis; vertical-align: middle;
+}
+#results-table tbody tr:nth-child(even) td { background: #181825; }
+#results-table tbody tr:hover td { background: var(--accent-light) !important; }
+td.is-null { color: var(--text-muted); font-style: italic; }
+td.is-num  { color: var(--warning); text-align: right; }
+td.is-bool { color: var(--accent2); }
+
+/* ── status bar ──────────────────────────────────── */
+#status-bar {
+  height: var(--status-h); display: flex; align-items: center; padding: 0 14px; gap: 12px;
+  background: var(--sidebar-bg); border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--text-dim); flex-shrink: 0; font-weight: 400;
+}
+#status-msg.ok  { color: var(--success); font-weight: 600; }
+#status-msg.err { color: var(--error);   font-weight: 600; }
+
+/* ── pagination ──────────────────────────────────── */
+#pagination { display: none; align-items: center; gap: 5px; margin-left: auto; }
+#pagination button {
+  padding: 2px 9px; background: var(--border); border: none;
+  border-radius: 4px; color: var(--text); cursor: pointer; font-size: 11px; font-family: var(--font-ui);
+}
+#pagination button:hover:not(:disabled) { background: var(--accent-light); color: var(--accent); }
+#pagination button:disabled { opacity: .35; cursor: default; }
+#pagination span { font-size: 11px; color: var(--text-dim); }
+
+/* ── queries panel ───────────────────────────────── */
+#queries-panel {
+  position: fixed; top: var(--header-h); right: 0; bottom: 0; width: 300px;
+  background: var(--panel-bg); border-left: 1px solid var(--border);
+  box-shadow: -4px 0 20px rgba(0,0,0,.4);
+  transform: translateX(100%); transition: transform .2s ease;
+  z-index: 50; display: flex; flex-direction: column;
+}
+#queries-panel.open { transform: translateX(0); }
+#qp-header {
+  padding: 11px 14px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+  background: var(--sidebar-bg);
+}
+#qp-header span { font-weight: 700; font-size: 13px; }
+#qp-close { background: none; border: none; cursor: pointer; font-size: 18px; color: var(--text-dim); line-height: 1; padding: 2px 4px; border-radius: 3px; }
+#qp-close:hover { background: var(--border); color: var(--text); }
+#qp-count { font-size: 11px; color: var(--text-muted); padding: 6px 14px; border-bottom: 1px solid var(--border-light); flex-shrink: 0; font-weight: 400; }
+#queries-list { overflow-y: auto; flex: 1; }
+#queries-list::-webkit-scrollbar { width: 4px; }
+#queries-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.q-item { display: flex; align-items: center; padding: 9px 14px; gap: 8px; border-bottom: 1px solid var(--border-light); transition: background .1s; }
+.q-item:hover { background: #1c1d2e; }
+.q-name { flex: 1; font-size: 12px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.q-meta { font-size: 10px; color: var(--text-muted); display: block; margin-top: 2px; font-weight: 400; }
+.q-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.q-btn { padding: 3px 9px; border: 1px solid var(--border); border-radius: 4px; font-size: 11px; font-weight: 500; cursor: pointer; background: var(--bg); font-family: var(--font-ui); color: var(--text-dim); }
+.q-open { color: var(--accent); border-color: #2a3f6a; }
+.q-open:hover { background: var(--accent-light); }
+.q-del  { color: var(--error); border-color: #4a1f2a; }
+.q-del:hover  { background: #2a1020; }
+
+/* ── export dropdown ─────────────────────────────── */
+.export-wrap { position: relative; }
+.export-menu {
+  display: none; position: absolute; top: calc(100% + 4px); left: 0;
+  background: var(--panel-bg); border: 1px solid var(--border); border-radius: 6px;
+  box-shadow: 0 4px 18px rgba(0,0,0,.5); z-index: 30; min-width: 168px; overflow: hidden;
+}
+.export-menu.open { display: block; }
+.export-menu button {
+  display: block; width: 100%; padding: 8px 14px; text-align: left;
+  background: none; border: none; border-bottom: 1px solid var(--border-light);
+  color: var(--text); font-size: 12px; font-family: var(--font-ui);
+  font-weight: 500; cursor: pointer;
+}
+.export-menu button:last-child { border-bottom: none; }
+.export-menu button:hover { background: var(--accent-light); color: var(--accent); }
+
+/* ── save modal ──────────────────────────────────── */
+#save-modal { position: fixed; inset: 0; background: rgba(0,0,0,.6); display: none; align-items: center; justify-content: center; z-index: 100; }
+#save-modal.open { display: flex; }
+.modal-box { background: var(--panel-bg); border: 1px solid var(--border); border-radius: 8px; padding: 20px 22px; min-width: 340px; box-shadow: 0 8px 32px rgba(0,0,0,.5); }
+.modal-box h3 { font-size: 14px; margin-bottom: 12px; font-weight: 700; }
+.modal-box input[type=text] { width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: 5px; font-size: 13px; font-family: var(--font-ui); outline: none; background: var(--bg); color: var(--text); font-weight: 400; }
+.modal-box input[type=text]:focus { border-color: var(--accent); }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.modal-actions .btn-save-ok { padding: 5px 16px; background: var(--accent); color: #1a1b26; border: none; border-radius: 4px; font-size: 12px; font-weight: 700; cursor: pointer; }
+.modal-actions .btn-save-ok:hover { opacity: .85; }
+.modal-actions .btn-cancel { padding: 5px 12px; background: var(--border); border: none; border-radius: 4px; font-size: 12px; font-weight: 500; color: var(--text-dim); cursor: pointer; }
+.modal-actions .btn-cancel:hover { background: #35364f; color: var(--text); }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="logo">🦆</span>
+  <span class="title">DuckDB Client</span>
+  <span class="db-path" id="db-path">connecting…</span>
+  <span class="spacer"></span>
+  <span class="conn-dot" id="conn-dot" title="Disconnected"></span>
+</header>
+
+<div id="layout">
+  <aside id="sidebar">
+    <div id="sidebar-header">
+      Tables
+      <button class="s-btn" id="btn-refresh">⟳ Refresh</button>
+    </div>
+    <div id="table-list">
+      <div class="placeholder"><span class="ph-icon">⏳</span>Loading…</div>
+    </div>
+  </aside>
+  <div id="sidebar-resizer"></div>
+
+  <div id="main">
+    <div id="tab-bar"></div>
+
+    <div id="editor-wrap">
+      <!-- Highlight layer: coloured HTML behind the editor -->
+      <div id="highlight-layer" aria-hidden="true"></div>
+      <textarea id="sql-editor" spellcheck="false"
+        placeholder="-- Write SQL here  •  Ctrl+Enter or F5 to run"></textarea>
+    </div>
+    <div id="editor-resizer"></div>
+
+    <div id="toolbar">
+      <button class="btn btn-run"     id="btn-run">▶ Run</button>
+      <button class="btn btn-run-sel" id="btn-run-sel" title="Execute selected text only">⬡ Run Selection</button>
+      <button class="btn btn-clear"   id="btn-clear">✕ Clear</button>
+      <button class="btn btn-save"    id="btn-save">💾 Save</button>
+      <button class="btn btn-queries" id="btn-queries">📂 Queries</button>
+      <div class="export-wrap">
+        <button class="btn btn-clear" id="btn-export" title="Export results">⬇ Export ▾</button>
+        <div class="export-menu" id="export-menu">
+          <button id="btn-copy-csv">📋 Copy as CSV</button>
+          <button id="btn-dl-csv">⬇ Download CSV</button>
+          <button id="btn-dl-excel">📊 Download Excel</button>
+        </div>
+      </div>
+      <span class="shortcut-hint"><kbd>Ctrl</kbd>+<kbd>Enter</kbd> · <kbd>F5</kbd></span>
+      <div class="limit-wrap">Limit <input type="number" id="row-limit" value="1000" min="1" max="10000"></div>
+    </div>
+
+    <div id="results-wrap">
+      <div class="placeholder" id="ph"><span class="ph-icon">📋</span>Run a query to see results</div>
+      <table id="results-table"></table>
+    </div>
+
+    <div id="status-bar">
+      <span id="status-msg">Ready</span>
+      <div id="pagination">
+        <button id="pg-prev">‹ Prev</button>
+        <span id="pg-info"></span>
+        <button id="pg-next">Next ›</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="queries-panel">
+  <div id="qp-header"><span>Saved Queries</span><button id="qp-close">×</button></div>
+  <div id="qp-count"></div>
+  <div id="queries-list"></div>
+</div>
+
+<div id="save-modal">
+  <div class="modal-box">
+    <h3>Save Query</h3>
+    <input type="text" id="save-name" placeholder="Query name…" maxlength="64" autocomplete="off">
+    <div class="modal-actions">
+      <button class="btn-cancel" id="btn-save-cancel">Cancel</button>
+      <button class="btn-save-ok" id="btn-save-ok">Save</button>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+// ── SQL Syntax Highlighter ────────────────────────────────────────────────────
+// Pure JS tokenizer — no dependencies, runs in < 1ms for typical queries
+
+const _HL_KW = new Set((
+  "SELECT FROM WHERE GROUP ORDER BY HAVING JOIN LEFT RIGHT INNER OUTER CROSS FULL " +
+  "ON AS AND OR NOT IN LIKE BETWEEN IS NULL DISTINCT LIMIT OFFSET UNION ALL EXCEPT " +
+  "INTERSECT CASE WHEN THEN ELSE END WITH OVER PARTITION ROWS RANGE PRECEDING " +
+  "FOLLOWING CURRENT ROW INSERT INTO VALUES UPDATE SET DELETE CREATE DROP ALTER " +
+  "TABLE INDEX VIEW SCHEMA DATABASE ASC DESC EXISTS TRUE FALSE USING LATERAL " +
+  "NATURAL CAST COALESCE NULLIF TRIM"
+).split(" "));
+
+const _HL_FN = new Set((
+  "COUNT SUM AVG MIN MAX ROUND FLOOR CEIL CEILING UPPER LOWER LTRIM RTRIM " +
+  "SUBSTR SUBSTRING REPLACE LENGTH CHAR_LENGTH DATE YEAR MONTH DAY NOW " +
+  "CURRENT_DATE CURRENT_TIME CURRENT_TIMESTAMP EXTRACT DATE_FORMAT DATE_DIFF " +
+  "DATE_TRUNC STRFTIME IF IIF IFNULL NVL GREATEST LEAST ABS SIGN SQRT POWER " +
+  "MOD RANDOM YEARWEEK ISNULL STRING_AGG ARRAY_AGG LISTAGG FIRST_VALUE " +
+  "LAST_VALUE LAG LEAD RANK DENSE_RANK ROW_NUMBER NTILE PERCENT_RANK CONCAT " +
+  "DATEDIFF DATEADD TODATE TO_DATE TO_CHAR DECODE NVL2 LPAD RPAD REPEAT REVERSE"
+).split(" "));
+
+function _he(s) {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function highlightSQL(code) {
+  let out = "", i = 0;
+  const n = code.length;
+
+  while (i < n) {
+    const c  = code[i];
+    const c1 = code[i + 1];
+
+    // ── line comment
+    if (c === "-" && c1 === "-") {
+      const end = code.indexOf("\n", i);
+      const seg = end < 0 ? code.slice(i) : code.slice(i, end);
+      out += `<span class="hl-comment">${_he(seg)}</span>`;
+      i += seg.length; continue;
+    }
+    // ── block comment
+    if (c === "/" && c1 === "*") {
+      const end = code.indexOf("*/", i + 2);
+      const seg = end < 0 ? code.slice(i) : code.slice(i, end + 2);
+      out += `<span class="hl-comment">${_he(seg)}</span>`;
+      i += seg.length; continue;
+    }
+    // ── single-quoted string  ('it''s fine' style escaping)
+    if (c === "'") {
+      let j = i + 1;
+      while (j < n) {
+        if (code[j] === "'") { j++; if (code[j] !== "'") break; }
+        else j++;
+      }
+      out += `<span class="hl-string">${_he(code.slice(i, j))}</span>`;
+      i = j; continue;
+    }
+    // ── double-quoted identifier
+    if (c === '"') {
+      let j = i + 1;
+      while (j < n && code[j] !== '"') j++;
+      out += `<span class="hl-ident">${_he(code.slice(i, j + 1))}</span>`;
+      i = j + 1; continue;
+    }
+    // ── number literal
+    if (/[0-9]/.test(c) && (i === 0 || /[\s,;(=<>!+\-*\/]/.test(code[i - 1]))) {
+      let j = i;
+      while (j < n && /[0-9.]/.test(code[j])) j++;
+      out += `<span class="hl-number">${_he(code.slice(i, j))}</span>`;
+      i = j; continue;
+    }
+    // ── word  (keyword | function | plain identifier)
+    if (/[a-zA-Z_]/.test(c)) {
+      let j = i;
+      while (j < n && /[a-zA-Z0-9_]/.test(code[j])) j++;
+      const word = code.slice(i, j);
+      const up   = word.toUpperCase();
+      const esc  = _he(word);
+      if (_HL_KW.has(up))      out += `<span class="hl-kw">${esc}</span>`;
+      else if (_HL_FN.has(up)) out += `<span class="hl-fn">${esc}</span>`;
+      else                     out += esc;
+      i = j; continue;
+    }
+    // ── anything else
+    out += _he(c); i++;
+  }
+  return out;
+}
+
+function updateHighlight() {
+  const editor = document.getElementById("sql-editor");
+  const layer  = document.getElementById("highlight-layer");
+  // trailing newline keeps last-line height correct
+  layer.innerHTML = highlightSQL(editor.value) + "\n";
+  // sync scroll position
+  layer.scrollTop  = editor.scrollTop;
+  layer.scrollLeft = editor.scrollLeft;
+}
+
+// Convenience: set editor value + re-highlight
+function setEditorValue(val) {
+  document.getElementById("sql-editor").value = val;
+  updateHighlight();
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+
+let tabs     = [{ id: 1, label: "Query 1", sql: "", _lastAutoSavedSQL: null }];
+let activeId = 1;
+let _tabCtr  = 1;
+
+function activeTab() { return tabs.find(t => t.id === activeId); }
+
+function syncTabSQL() {
+  const t = activeTab();
+  if (t) t.sql = document.getElementById("sql-editor").value;
+}
+
+function renderTabs() {
+  const bar = document.getElementById("tab-bar");
+  bar.innerHTML = "";
+  for (const tab of tabs) {
+    const el = document.createElement("div");
+    el.className = "tab" + (tab.id === activeId ? " active" : "");
+    el.innerHTML =
+      `<span class="tab-label" title="${escAttr(tab.label)}">${escHtml(tab.label)}</span>` +
+      (tabs.length > 1 ? `<span class="tab-close" data-id="${tab.id}">×</span>` : "");
+    el.addEventListener("click", e => {
+      if (e.target.classList.contains("tab-close")) { closeTab(tab.id); return; }
+      switchTab(tab.id);
+    });
+    bar.appendChild(el);
+  }
+  const add = document.createElement("button");
+  add.id = "btn-add-tab"; add.title = "New tab"; add.textContent = "+";
+  add.addEventListener("click", addTab);
+  bar.appendChild(add);
+}
+
+function switchTab(id) {
+  syncTabSQL(); activeId = id;
+  setEditorValue(activeTab().sql);
+  renderTabs();
+}
+
+function addTab() {
+  syncTabSQL(); _tabCtr++;
+  const t = { id: _tabCtr, label: `Query ${_tabCtr}`, sql: "", _lastAutoSavedSQL: null };
+  tabs.push(t); activeId = t.id;
+  setEditorValue("");
+  renderTabs();
+  document.getElementById("sql-editor").focus();
+}
+
+function closeTab(id) {
+  if (tabs.length === 1) return;
+  const idx = tabs.findIndex(t => t.id === id);
+  tabs.splice(idx, 1);
+  if (activeId === id) {
+    const next = tabs[Math.min(idx, tabs.length - 1)];
+    activeId = next.id;
+    setEditorValue(next.sql);
+  }
+  renderTabs();
+}
+
+// Live-sync tab SQL as user types + re-highlight
+document.getElementById("sql-editor").addEventListener("input", () => {
+  const t = activeTab(); if (t) t.sql = document.getElementById("sql-editor").value;
+  updateHighlight();
+});
+
+// Sync scroll of highlight layer with textarea
+document.getElementById("sql-editor").addEventListener("scroll", () => {
+  const layer = document.getElementById("highlight-layer");
+  layer.scrollTop  = document.getElementById("sql-editor").scrollTop;
+  layer.scrollLeft = document.getElementById("sql-editor").scrollLeft;
+});
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+async function apiFetch(url, opts = {}) {
+  const r = await fetch(url, opts);
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({ detail: r.statusText }));
+    throw new Error(e.detail || r.statusText);
+  }
+  return r.json();
+}
+
+function setStatus(msg, cls = "") {
+  const el = document.getElementById("status-msg");
+  el.textContent = msg; el.className = cls;
+}
+
+function showPlaceholder(msg, icon = "📋", isError = false) {
+  const ph  = document.getElementById("ph");
+  const tbl = document.getElementById("results-table");
+  tbl.style.display = "none"; tbl.innerHTML = "";
+  ph.style.display = "flex";
+  ph.style.color   = isError ? "var(--error)" : "";
+  ph.innerHTML     = `<span class="ph-icon">${icon}</span>${msg}`;
+}
+
+function escHtml(s) { return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;"); }
+function escAttr(s) { return String(s).replace(/"/g,"&quot;").replace(/'/g,"&#39;"); }
+
+// ── Sidebar ───────────────────────────────────────────────────────────────────
+
+let _activeTable = null;
+
+async function loadTables() {
+  document.getElementById("table-list").innerHTML =
+    '<div class="placeholder"><span class="ph-icon">⏳</span>Loading…</div>';
+  try {
+    const data = await apiFetch("/duck/tables");
+    document.getElementById("db-path").textContent = data.db || "";
+    const dot = document.getElementById("conn-dot");
+    dot.className = "conn-dot ok"; dot.title = "Connected";
+    renderSidebar(data.tables);
+    setStatus("Ready");
+  } catch (e) {
+    document.getElementById("conn-dot").className = "conn-dot err";
+    document.getElementById("table-list").innerHTML =
+      `<div class="placeholder" style="color:var(--error)">${e.message}</div>`;
+    setStatus("Connection error: " + e.message, "err");
+  }
+}
+
+function renderSidebar(tables) {
+  const list = document.getElementById("table-list");
+  if (!tables.length) { list.innerHTML = '<div class="placeholder">No tables found</div>'; return; }
+  list.innerHTML = "";
+  for (const t of tables) {
+    const item = document.createElement("div");
+    item.className = "t-item";
+    item.innerHTML =
+      `<div class="t-row" data-name="${escAttr(t.name)}">
+        <span class="t-icon">▤</span>
+        <span class="t-name" title="${escAttr(t.name)}">${escHtml(t.name)}</span>
+        <span class="t-count">${t.rows.toLocaleString()}</span>
+      </div>
+      <div class="t-schema" id="schema-${sanitizeId(t.name)}"></div>`;
+    item.querySelector(".t-row").addEventListener("click", () => onTableClick(t.name));
+    list.appendChild(item);
+  }
+}
+
+function sanitizeId(n) { return n.replace(/[^a-z0-9_-]/gi, "_"); }
+
+async function onTableClick(name) {
+  const schemaEl = document.getElementById("schema-" + sanitizeId(name));
+  const thisRow  = document.querySelector(`.t-row[data-name="${escAttr(name)}"]`);
+  const isOpen   = schemaEl.classList.contains("open") && _activeTable === name;
+
+  document.querySelectorAll(".t-row").forEach(r => r.classList.remove("active"));
+  document.querySelectorAll(".t-schema").forEach(s => s.classList.remove("open"));
+
+  if (isOpen) { _activeTable = null; return; }
+  _activeTable = name;
+  thisRow.classList.add("active");
+  schemaEl.classList.add("open");
+
+  if (!schemaEl.dataset.loaded) {
+    schemaEl.innerHTML = '<div style="padding:5px 10px 5px 26px;color:var(--text-muted);font-size:11px">Loading…</div>';
+    try {
+      const data = await apiFetch(`/duck/tables/${encodeURIComponent(name)}/schema`);
+      schemaEl.innerHTML = data.columns.map(c =>
+        `<div class="s-col"><span class="s-name">${escHtml(c.name)}</span><span class="s-type">${escHtml(c.type)}</span></div>`
+      ).join("");
+      schemaEl.dataset.loaded = "1";
+    } catch (e) {
+      schemaEl.innerHTML = `<div style="padding:5px 26px;color:var(--error);font-size:11px">${e.message}</div>`;
+    }
+  }
+  browseTable(name, 0);
+}
+
+// ── Browse ────────────────────────────────────────────────────────────────────
+
+const browseState = { table: null, offset: 0, limit: 200, total: 0 };
+
+function browseTable(name, offset) {
+  Object.assign(browseState, { table: name, offset, limit: 200 });
+  const off = offset > 0 ? `\nOFFSET ${offset}` : "";
+  const sql = `SELECT *\nFROM "${name}"\nLIMIT ${browseState.limit}${off};`;
+  const t   = activeTab();
+  if (t) { t.sql = sql; t.label = name; }
+  setEditorValue(sql);
+  renderTabs();
+  runBrowse(name, offset);
+}
+
+async function runBrowse(name, offset) {
+  showPlaceholder("Loading…", "⏳"); setStatus("Loading…");
+  try {
+    const data = await apiFetch(
+      `/duck/tables/${encodeURIComponent(name)}/data?limit=${browseState.limit}&offset=${offset}`
+    );
+    browseState.total = data.total;
+    renderResults({ columns: data.columns, rows: data.rows, row_count: data.rows.length });
+    const page    = Math.floor(offset / browseState.limit) + 1;
+    const pages   = Math.ceil(data.total / browseState.limit);
+    const showing = Math.min(offset + browseState.limit, data.total);
+    setStatus(`Rows ${offset + 1}–${showing} of ${data.total.toLocaleString()} · browse`, "ok");
+    showPagination(page, pages);
+  } catch (e) {
+    showPlaceholder(e.message, "⚠", true);
+    setStatus("Error: " + e.message, "err");
+  }
+}
+
+function showPagination(page, pages) {
+  const pg = document.getElementById("pagination");
+  if (pages <= 1) { pg.style.display = "none"; return; }
+  pg.style.display = "flex";
+  document.getElementById("pg-info").textContent = `Page ${page} / ${pages}`;
+  document.getElementById("pg-prev").disabled = page <= 1;
+  document.getElementById("pg-next").disabled = page >= pages;
+}
+
+document.getElementById("pg-prev").addEventListener("click", () => {
+  if (!browseState.table) return;
+  browseState.offset = Math.max(0, browseState.offset - browseState.limit);
+  browseTable(browseState.table, browseState.offset);
+});
+document.getElementById("pg-next").addEventListener("click", () => {
+  if (!browseState.table) return;
+  if (browseState.offset + browseState.limit < browseState.total) {
+    browseState.offset += browseState.limit;
+    browseTable(browseState.table, browseState.offset);
+  }
+});
+
+// ── Execute ───────────────────────────────────────────────────────────────────
+
+async function _execute(sql, label) {
+  const limit = parseInt(document.getElementById("row-limit").value, 10) || 1000;
+  browseState.table = null;
+  document.getElementById("pagination").style.display = "none";
+  showPlaceholder("Running…", "⏳");
+  setStatus("Running…");
+  try {
+    const data = await apiFetch("/duck/query", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sql, limit }),
+    });
+    renderResults(data);
+    const note = data.truncated ? ` (capped at ${limit})` : "";
+    setStatus(`${data.row_count.toLocaleString()} rows · ${data.duration_ms} ms${note}${label}`, "ok");
+  } catch (e) {
+    showPlaceholder(e.message, "⚠", true);
+    setStatus("Error: " + e.message, "err");
+  }
+}
+
+function runQuery() {
+  const sql = document.getElementById("sql-editor").value.trim();
+  if (!sql) return;
+  _execute(sql, "");
+}
+
+function runSelection() {
+  const ed  = document.getElementById("sql-editor");
+  const sql = ed.value.substring(ed.selectionStart, ed.selectionEnd).trim();
+  if (!sql) { setStatus("No text selected — select a portion of the query first", "err"); return; }
+  _execute(sql, " · selection");
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+
+let _lastResults = null;   // { columns, rows } — set by renderResults()
+
+function _toCSV(data) {
+  const escape = v => {
+    if (v === null || v === undefined) return "";
+    const s = String(v);
+    return (s.includes(",") || s.includes('"') || s.includes("\n"))
+      ? '"' + s.replace(/"/g, '""') + '"'
+      : s;
+  };
+  const lines = [data.columns.join(",")];
+  for (const row of data.rows)
+    lines.push(data.columns.map(c => escape(row[c])).join(","));
+  return lines.join("\n");
+}
+
+function copyCSV() {
+  if (!_lastResults || !_lastResults.columns.length) {
+    setStatus("No results to copy", "err"); return;
+  }
+  navigator.clipboard.writeText(_toCSV(_lastResults))
+    .then(() => setStatus(`Copied ${_lastResults.rows.length} rows as CSV`, "ok"))
+    .catch(() => setStatus("Clipboard access denied", "err"));
+}
+
+function _submitExport(format) {
+  const sql = document.getElementById("sql-editor").value.trim();
+  if (!sql) { setStatus("Nothing to export — run a query first", "err"); return; }
+  // Hidden form POST → browser owns the response stream, no JS memory involved.
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = "/duck/export";
+  [["sql", sql], ["format", format]].forEach(([n, v]) => {
+    const inp = document.createElement("input");
+    inp.type = "hidden"; inp.name = n; inp.value = v;
+    form.appendChild(inp);
+  });
+  document.body.appendChild(form);
+  form.submit();
+  document.body.removeChild(form);
+  setStatus(`${format.toUpperCase()} download started…`, "ok");
+}
+
+function downloadExcel() { _submitExport("xlsx"); }
+function downloadCSV()   { _submitExport("csv");  }
+
+// Export dropdown toggle
+document.getElementById("btn-export").addEventListener("click", e => {
+  e.stopPropagation();
+  document.getElementById("export-menu").classList.toggle("open");
+});
+document.addEventListener("click", () => {
+  document.getElementById("export-menu").classList.remove("open");
+});
+document.getElementById("btn-copy-csv").addEventListener("click", () => {
+  document.getElementById("export-menu").classList.remove("open");
+  copyCSV();
+});
+document.getElementById("btn-dl-csv").addEventListener("click", () => {
+  document.getElementById("export-menu").classList.remove("open");
+  downloadCSV();
+});
+document.getElementById("btn-dl-excel").addEventListener("click", () => {
+  document.getElementById("export-menu").classList.remove("open");
+  downloadExcel();
+});
+
+// ── Render results ────────────────────────────────────────────────────────────
+
+function renderResults(data) {
+  const ph  = document.getElementById("ph");
+  const tbl = document.getElementById("results-table");
+  if (!data.columns || !data.columns.length) { showPlaceholder("Query returned no columns.", "ℹ"); return; }
+  _lastResults = { columns: data.columns, rows: data.rows };
+  ph.style.display  = "none";
+  tbl.style.display = "table";
+  tbl.innerHTML =
+    "<thead><tr>" + data.columns.map(c => `<th>${escHtml(c)}</th>`).join("") + "</tr></thead>" +
+    "<tbody>" + data.rows.map(row =>
+      "<tr>" + data.columns.map(col => {
+        const v = row[col];
+        if (v === null || v === undefined) return '<td class="is-null">NULL</td>';
+        if (typeof v === "boolean") return `<td class="is-bool">${v}</td>`;
+        if (typeof v === "number")  return `<td class="is-num">${v}</td>`;
+        const s = String(v);
+        return `<td title="${escAttr(s)}">${escHtml(s)}</td>`;
+      }).join("") + "</tr>"
+    ).join("") + "</tbody>";
+}
+
+// ── Keyboard ──────────────────────────────────────────────────────────────────
+
+document.getElementById("sql-editor").addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); runQuery(); return; }
+  if (e.key === "F5") { e.preventDefault(); runQuery(); return; }
+  if (e.key === "Tab") {
+    e.preventDefault();
+    const el = e.target, s = el.selectionStart;
+    el.value = el.value.slice(0, s) + "  " + el.value.slice(el.selectionEnd);
+    el.selectionStart = el.selectionEnd = s + 2;
+    updateHighlight();
+  }
+});
+document.addEventListener("keydown", e => {
+  if (e.key === "F5" && document.activeElement.id !== "sql-editor") { e.preventDefault(); runQuery(); }
+});
+
+// ── Saved queries ─────────────────────────────────────────────────────────────
+
+function openQueriesPanel() {
+  document.getElementById("queries-panel").classList.add("open");
+  document.getElementById("btn-queries").classList.add("active");
+  refreshQueriesList();
+}
+function closeQueriesPanel() {
+  document.getElementById("queries-panel").classList.remove("open");
+  document.getElementById("btn-queries").classList.remove("active");
+}
+
+async function refreshQueriesList() {
+  const list  = document.getElementById("queries-list");
+  const cntEl = document.getElementById("qp-count");
+  list.innerHTML = '<div style="padding:12px;color:var(--text-muted)">Loading…</div>';
+  try {
+    const data = await apiFetch("/duck/queries");
+    const qs   = data.queries;
+    cntEl.textContent = `${qs.length} / 20 saved`;
+    if (!qs.length) { list.innerHTML = '<div style="padding:12px;color:var(--text-muted)">No saved queries yet.</div>'; return; }
+    list.innerHTML = qs.map(q => {
+      const d   = new Date(q.modified * 1000);
+      const fmt = d.toLocaleDateString() + " " + d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      return `<div class="q-item">
+        <div style="flex:1;min-width:0">
+          <div class="q-name" title="${escAttr(q.name)}">${escHtml(q.name)}</div>
+          <span class="q-meta">${fmt}</span>
+        </div>
+        <div class="q-actions">
+          <button class="q-btn q-open" data-name="${escAttr(q.name)}">Open</button>
+          <button class="q-btn q-del"  data-name="${escAttr(q.name)}">Del</button>
+        </div>
+      </div>`;
+    }).join("");
+    list.querySelectorAll(".q-open").forEach(b => b.addEventListener("click", () => openQueryInEditor(b.dataset.name)));
+    list.querySelectorAll(".q-del").forEach(b  => b.addEventListener("click", () => deleteQuery(b.dataset.name)));
+  } catch (e) {
+    list.innerHTML = `<div style="padding:12px;color:var(--error)">${e.message}</div>`;
+  }
+}
+
+async function openQueryInEditor(name) {
+  try {
+    const data = await apiFetch(`/duck/queries/${encodeURIComponent(name)}`);
+    syncTabSQL();
+    const t = activeTab();
+    t.sql = data.sql; t.label = name; t._lastAutoSavedSQL = data.sql;
+    setEditorValue(data.sql);
+    renderTabs();
+    closeQueriesPanel();
+    setStatus(`Opened "${name}"`, "ok");
+  } catch (e) { setStatus("Error: " + e.message, "err"); }
+}
+
+async function deleteQuery(name) {
+  if (!confirm(`Delete "${name}"?`)) return;
+  try {
+    await apiFetch(`/duck/queries/${encodeURIComponent(name)}`, { method: "DELETE" });
+    refreshQueriesList();
+  } catch (e) { setStatus("Error: " + e.message, "err"); }
+}
+
+// ── Save modal ────────────────────────────────────────────────────────────────
+
+function openSaveModal() {
+  const t = activeTab();
+  const input = document.getElementById("save-name");
+  input.value = /^Query \d+$/.test(t.label) ? "" : t.label;
+  document.getElementById("save-modal").classList.add("open");
+  input.focus(); input.select();
+}
+function closeSaveModal() { document.getElementById("save-modal").classList.remove("open"); }
+
+async function confirmSave() {
+  const name = document.getElementById("save-name").value.trim();
+  if (!name) return;
+  syncTabSQL();
+  const t = activeTab();
+  try {
+    await apiFetch("/duck/queries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, sql: t.sql }),
+    });
+    t.label = name; renderTabs(); closeSaveModal();
+    setStatus(`Saved as "${name}"`, "ok");
+  } catch (e) { setStatus("Error: " + e.message, "err"); }
+}
+
+// ── Buttons ───────────────────────────────────────────────────────────────────
+
+document.getElementById("btn-run").addEventListener("click", runQuery);
+document.getElementById("btn-run-sel").addEventListener("click", runSelection);
+document.getElementById("btn-clear").addEventListener("click", () => {
+  const t = activeTab(); if (t) t.sql = "";
+  setEditorValue("");
+  browseState.table = null;
+  document.getElementById("pagination").style.display = "none";
+  document.getElementById("sql-editor").focus();
+});
+document.getElementById("btn-refresh").addEventListener("click", loadTables);
+document.getElementById("btn-save").addEventListener("click", openSaveModal);
+document.getElementById("btn-queries").addEventListener("click", () => {
+  document.getElementById("queries-panel").classList.contains("open") ? closeQueriesPanel() : openQueriesPanel();
+});
+document.getElementById("qp-close").addEventListener("click", closeQueriesPanel);
+document.getElementById("btn-save-cancel").addEventListener("click", closeSaveModal);
+document.getElementById("btn-save-ok").addEventListener("click", confirmSave);
+document.getElementById("save-name").addEventListener("keydown", e => {
+  if (e.key === "Enter") confirmSave();
+  if (e.key === "Escape") closeSaveModal();
+});
+document.getElementById("save-modal").addEventListener("click", e => {
+  if (e.target === document.getElementById("save-modal")) closeSaveModal();
+});
+
+// ── Resize: sidebar ───────────────────────────────────────────────────────────
+
+(function () {
+  const handle = document.getElementById("sidebar-resizer");
+  const sidebar = document.getElementById("sidebar");
+  let drag = false;
+  handle.addEventListener("mousedown", e => {
+    drag = true; handle.classList.add("dragging");
+    document.body.style.cursor = "col-resize"; document.body.style.userSelect = "none"; e.preventDefault();
+  });
+  document.addEventListener("mousemove", e => {
+    if (!drag) return;
+    const w = e.clientX;
+    if (w >= 140 && w <= 520) { sidebar.style.width = w + "px"; sidebar.style.minWidth = w + "px"; }
+  });
+  document.addEventListener("mouseup", () => {
+    if (!drag) return; drag = false; handle.classList.remove("dragging");
+    document.body.style.cursor = ""; document.body.style.userSelect = "";
+  });
+})();
+
+// ── Resize: editor / results ──────────────────────────────────────────────────
+
+(function () {
+  const handle     = document.getElementById("editor-resizer");
+  const editorWrap = document.getElementById("editor-wrap");
+  const main       = document.getElementById("main");
+  let drag = false;
+  handle.addEventListener("mousedown", e => {
+    drag = true; handle.classList.add("dragging");
+    document.body.style.cursor = "row-resize"; document.body.style.userSelect = "none"; e.preventDefault();
+  });
+  document.addEventListener("mousemove", e => {
+    if (!drag) return;
+    const rect  = main.getBoundingClientRect();
+    const clamp = Math.max(60, Math.min(e.clientY - rect.top, rect.height - 120));
+    editorWrap.style.height = clamp + "px"; editorWrap.style.flex = "none";
+  });
+  document.addEventListener("mouseup", () => {
+    if (!drag) return; drag = false; handle.classList.remove("dragging");
+    document.body.style.cursor = ""; document.body.style.userSelect = "";
+  });
+})();
+
+// ── Auto-save ─────────────────────────────────────────────────────────────────
+// Every 5 min, silently save every tab that has changed content.
+// Named tabs  (label ≠ "Query N") → save under their label (overwrites same slot).
+// Unnamed tabs (label = "Query N") → save under a fixed "autosave_<id>" slot.
+// Tabs with empty SQL or no change since last auto-save are skipped.
+
+const AUTO_SAVE_INTERVAL = 5 * 60 * 1000; // 5 minutes
+
+async function _autoSaveOne(tab) {
+  if (!tab.sql.trim()) return;
+  if (tab.sql === tab._lastAutoSavedSQL) return;  // unchanged
+
+  const name = /^Query \d+$/.test(tab.label)
+    ? `autosave_${tab.id}`
+    : tab.label;
+
+  try {
+    await apiFetch("/duck/queries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, sql: tab.sql }),
+    });
+    tab._lastAutoSavedSQL = tab.sql;
+
+    // Brief status feedback (3 s) then restore previous message
+    const prevText = document.getElementById("status-msg").textContent;
+    const prevCls  = document.getElementById("status-msg").className;
+    setStatus(`Auto-saved: "${name}"`, "ok");
+    setTimeout(() => setStatus(prevText, prevCls), 3000);
+  } catch (e) {
+    // Silently swallow errors (e.g. 20-query cap) — auto-save is best-effort
+    console.warn("Auto-save skipped:", e.message);
+  }
+}
+
+async function runAutoSave() {
+  syncTabSQL(); // flush active tab's editor content into tabs[]
+  for (const tab of tabs) await _autoSaveOne(tab);
+}
+
+setInterval(runAutoSave, AUTO_SAVE_INTERVAL);
+
+// ── Boot ──────────────────────────────────────────────────────────────────────
+
+renderTabs();
+loadTables();
+</script>
+</body>
+</html>

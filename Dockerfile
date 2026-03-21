@@ -32,3 +32,12 @@ EXPOSE 22 5000 5001 5002
 
 # Start SSH and keep container alive
 CMD service ssh start && bash
+
+
+
+
+
+
+
+
+

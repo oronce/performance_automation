@@ -23,8 +23,9 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(_HERE, "SQL"))
 
 from main import generate_raw_sql                  # SQL/main.py
-from SQL.sql_generator import generate_sql             # SQL/sql_generator.py
+from SQL.sql_generator import generate_sql, generate_worst_cell_sql  # SQL/sql_generator.py
 from cache_builder.config import DUCKDB_PATH       # cache_builder/config.py
+from duck_client.router import router as duck_router  # DuckDB SQL client
 
 # ── MySQL connection config ────────────────────────────────────────
 MYSQL_CONFIG = {
@@ -47,6 +48,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(duck_router)
 
 _STATIC_DIR = os.path.join(_HERE, "static")
 app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
@@ -282,6 +285,68 @@ def sql_query(
             "start_date":        start_date,
             "end_date":          end_date,
             "granularity":       granularity,
+            "aggregation_level": aggregation_level,
+            "rows":              len(df),
+        },
+        "data": df.to_dict(orient="records"),
+    }
+
+
+@app.get("/worst_cells")
+def worst_cells(
+    script:            str,
+    start_date:        str,
+    end_date:          str,
+    aggregation_level: Optional[str] = None,
+    time_start:        Optional[str] = None,
+    time_end:          Optional[str] = None,
+    limit:             Optional[int] = None,
+):
+    """
+    Execute a worst-cell SQL template against MySQL and return results.
+
+    Parameters
+    ----------
+    script            : 2g_ericsson_worst_cell | 2g_huawei_worst_cell
+    start_date        : "YYYY-MM-DD"
+    end_date          : "YYYY-MM-DD"
+    aggregation_level : None | cell_name | site_name | commune |
+                        arrondissement | departement | controller_name
+    time_start        : optional "HH:MM"  — filter time >= time_start
+    time_end          : optional "HH:MM"  — filter time <= time_end
+    limit             : optional row cap (e.g. 50 for top-50 bar chart)
+    """
+    try:
+        sql = generate_worst_cell_sql(
+            script=script,
+            start_date=start_date,
+            end_date=end_date,
+            aggregation_level=aggregation_level,
+            time_start=time_start,
+            time_end=time_end,
+        )
+    except (ValueError, FileNotFoundError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    if limit is not None:
+        sql = sql.rstrip() + f"\nLIMIT {int(limit)}"
+
+    try:
+        df = _run_mysql_query(sql)
+    except MySQLError as e:
+        raise HTTPException(status_code=500, detail=f"MySQL error: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Query error: {e}")
+
+    df = _normalize_mysql_df(df)
+    df = df.replace({np.nan: None})
+
+    return {
+        "success": True,
+        "meta": {
+            "script":            script,
+            "start_date":        start_date,
+            "end_date":          end_date,
             "aggregation_level": aggregation_level,
             "rows":              len(df),
         },

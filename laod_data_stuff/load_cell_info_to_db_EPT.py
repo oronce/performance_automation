@@ -35,76 +35,76 @@ COLUMN_MAPPINGS = {
         },
         'table_name': 'EPT_2G'
     },
-    # 'EPT 3G': {
-    #     'excel_to_sql': {
-    #         'VENDOR': 'VENDOR',
-    #         'UCell NAME': 'CELL_NAME',
-    #         'RBS NAME': 'RBS_NAME',
-    #         'SITE NAME': 'SITE_NAME',
-    #         'RNC': 'RNC',
-    #         'LAC': 'LAC',
-    #         'localcellid': 'localcellid',
-    #         'ServiceArea': 'ServiceArea',
-    #         'PSC': 'PSC',
-    #         'FREQ BAND': 'FREQ_BAND',
-    #         'BANDE': 'BANDE',
-    #         'AZIMUTH': 'AZIMUTH',
-    #         'LONGITUDE': 'LONGITUDE',
-    #         'LATITUDE': 'LATITUDE',
-    #         'Arrondissement': 'ARRONDISSEMENT',
-    #         'Commune': 'COMMUNE',
-    #         'DEPARTEMENT': 'DEPARTEMENT'
-    #     },
-    #     'table_name': 'EPT_3G'
-    # },
-    # 'EPT 4G': {
-    #     'excel_to_sql': {
-    #         'VENDOR': 'VENDOR',
-    #         'EUtranCell Name': 'CELL_NAME',
-    #         'ERBS Id': 'ERBS_Id',
-    #         'SITE NAME 4G': 'SITE_NAME',
-    #         'enbid': 'enodb_id',
-    #         'TAC': 'TAC',
-    #         'cellid': 'cell_id',
-    #         'dlchannelbandwidth': 'dlchannelbandwidth',
-    #         'earfcndl': 'earfcndl',
-    #         'earfcnul': 'earfcnul',
-    #         'freqband': 'freq_band',
-    #         'PCI': 'PCI',
-    #         'ulchannelbandwidth': 'ulchannelbandwidth',
-    #         'Bande': 'Bande',
-    #         'AZIMUTH': 'AZIMUTH',
-    #         'LONGITUDE': 'LONGITUDE',
-    #         'LATITUDE': 'LATITUDE',
-    #         'Arrondissement': 'ARRONDISSEMENT',
-    #         'Commune': 'COMMUNE',
-    #         'DEPARTEMENT': 'DEPARTEMENT'
-    #     },
-    #     'table_name': 'EPT_4G'
-    # },
-    # 'EPT 5G': {
-    #     'excel_to_sql': {
-    #         'Vendor': 'VENDOR',
-    #         'NRCellDUId': 'CELL_NAME',
-    #         'gNode B name': 'gNodeB_name',
-    #         'Site Name': 'SITE_NAME',
-    #         'gNBId': 'gNBId',
-    #         'cellLocalId': 'cellLocalId',
-    #         'nRPCI': 'nRPCI',
-    #         'nRTAC': 'nRTAC',
-    #         'NRSectorCarrierId': 'NRSectorCarrierId',
-    #         'arfcnDL': 'arfcnDL',
-    #         'arfcnUL': 'arfcnUL',
-    #         'bSChannelBwDL': 'bSChannelBwDL',
-    #         'AZIMUTH': 'AZIMUTH',
-    #         'LONGITUDE': 'LONGITUDE',
-    #         'LATITUDE': 'LATITUDE',
-    #         'Arrondissement': 'ARRONDISSEMENT',
-    #         'Commune': 'COMMUNE',
-    #         'DEPARTEMENT': 'DEPARTEMENT'
-    #     },
-    #     'table_name': 'EPT_5G'
-    # }
+    'EPT 3G': {
+        'excel_to_sql': {
+            'VENDOR': 'VENDOR',
+            'UCell NAME': 'CELL_NAME',
+            'RBS NAME': 'RBS_NAME',
+            'SITE NAME': 'SITE_NAME',
+            'RNC': 'RNC',
+            'LAC': 'LAC',
+            'localcellid': 'localcellid',
+            'ServiceArea': 'ServiceArea',
+            'PSC': 'PSC',
+            'FREQ BAND': 'FREQ_BAND',
+            'BANDE': 'BANDE',
+            'AZIMUTH': 'AZIMUTH',
+            'LONGITUDE': 'LONGITUDE',
+            'LATITUDE': 'LATITUDE',
+            'Arrondissement': 'ARRONDISSEMENT',
+            'Commune': 'COMMUNE',
+            'DEPARTEMENT': 'DEPARTEMENT'
+        },
+        'table_name': 'EPT_3G'
+    },
+    'EPT 4G': {
+        'excel_to_sql': {
+            'VENDOR': 'VENDOR',
+            'EUtranCell Name': 'CELL_NAME',
+            'ERBS Id': 'ERBS_Id',
+            'SITE NAME 4G': 'SITE_NAME',
+            'enbid': 'enodb_id',
+            'TAC': 'TAC',
+            'cellid': 'cell_id',
+            'dlchannelbandwidth': 'dlchannelbandwidth',
+            'earfcndl': 'earfcndl',
+            'earfcnul': 'earfcnul',
+            'freqband': 'freq_band',
+            'PCI': 'PCI',
+            'ulchannelbandwidth': 'ulchannelbandwidth',
+            'Bande': 'Bande',
+            'AZIMUTH': 'AZIMUTH',
+            'LONGITUDE': 'LONGITUDE',
+            'LATITUDE': 'LATITUDE',
+            'Arrondissement': 'ARRONDISSEMENT',
+            'Commune': 'COMMUNE',
+            'DEPARTEMENT': 'DEPARTEMENT'
+        },
+        'table_name': 'EPT_4G'
+    },
+    'EPT 5G': {
+        'excel_to_sql': {
+            'Vendor': 'VENDOR',
+            'NRCellDUId': 'CELL_NAME',
+            'gNode B name': 'gNodeB_name',
+            'Site Name': 'SITE_NAME',
+            'gNBId': 'gNBId',
+            'cellLocalId': 'cellLocalId',
+            'nRPCI': 'nRPCI',
+            'nRTAC': 'nRTAC',
+            'NRSectorCarrierId': 'NRSectorCarrierId',
+            'arfcnDL': 'arfcnDL',
+            'arfcnUL': 'arfcnUL',
+            'bSChannelBwDL': 'bSChannelBwDL',
+            'AZIMUTH': 'AZIMUTH',
+            'LONGITUDE': 'LONGITUDE',
+            'LATITUDE': 'LATITUDE',
+            'Arrondissement': 'ARRONDISSEMENT',
+            'Commune': 'COMMUNE',
+            'DEPARTEMENT': 'DEPARTEMENT'
+        },
+        'table_name': 'EPT_5G'
+    }
 }
 
 
@@ -229,7 +229,7 @@ def load_excel_to_sql(excel_file, db_config):
 
 if __name__ == "__main__":
     # Configuration
-    EXCEL_FILE = "performance_automation/laod_data_stuff/assets/excel_files/Adjacent Node ID_Updated.xlsx"  # Update with your file path
+    EXCEL_FILE = "performance_automation/laod_data_stuff/assets/excel_files/EPT.xlsx"  # Update with your file path
     
     # Update DB_CONFIG with your credentials
     DB_CONFIG['host'] = '10.22.33.116'
