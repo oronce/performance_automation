@@ -27,6 +27,9 @@ from pathlib import Path
 
 import csv
 import io
+import json
+import sys
+import subprocess
 
 import duckdb
 import pandas as pd
@@ -329,6 +332,108 @@ def export_query(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": "attachment; filename=export.xlsx"},
     )
+
+
+# ── Runner status & logs ──────────────────────────────────────────────────────
+
+_RUNNER_STATUS = os.path.join(_PROJECT_ROOT, "cache_builder", "assets", "runner_status.json")
+_RUNNER_LOG    = os.path.join(_PROJECT_ROOT, "cache_builder", "assets", "logs", "cache_builder.log")
+
+
+@router.get("/runner/status")
+def runner_status():
+    """Return the latest runner step status written by runner.py."""
+    if not os.path.exists(_RUNNER_STATUS):
+        return {"status": "idle", "step": None, "label": None,
+                "start_time": None, "end_time": None, "message": None, "error": None}
+    try:
+        with open(_RUNNER_STATUS, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/runner/logs")
+def runner_logs(lines: int = 50):
+    """
+    Return the last *lines* ERROR/WARNING entries from the cache builder log.
+
+    Returns
+    -------
+    ```json
+    { "entries": [{"timestamp": "...", "level": "ERROR", "message": "..."}], "total": N }
+    ```
+    """
+    if not os.path.exists(_RUNNER_LOG):
+        return {"entries": [], "total": 0, "log_file": _RUNNER_LOG, "exists": False}
+    try:
+        with open(_RUNNER_LOG, "r", encoding="utf-8", errors="replace") as f:
+            all_lines = f.readlines()
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    entries = []
+    for line in all_lines:
+        line = line.rstrip()
+        if "[ERROR" not in line and "[WARNING" not in line and "[WARN" not in line:
+            continue
+        # Format: "2026-03-22 06:00:01 [ERROR   ] message"
+        parts = line.split(" ", 3)
+        try:
+            entries.append({
+                "timestamp": f"{parts[0]} {parts[1]}",
+                "level":     parts[2].strip("[] "),
+                "message":   parts[3] if len(parts) > 3 else line,
+            })
+        except Exception:
+            entries.append({"timestamp": "", "level": "ERROR", "message": line})
+
+    return {
+        "entries":  entries[-lines:],
+        "total":    len(entries),
+        "log_file": _RUNNER_LOG,
+        "exists":   True,
+    }
+
+
+@router.post("/runner/start")
+def runner_start():
+    """
+    Launch a detached step3 load process (yesterday → today, default config).
+
+    Returns HTTP 409 if a job is already running.
+    The subprocess writes progress to runner_status.json — poll /runner/status.
+    """
+    # Check if already running
+    if os.path.exists(_RUNNER_STATUS):
+        try:
+            with open(_RUNNER_STATUS, "r", encoding="utf-8") as f:
+                status = json.load(f)
+            if status.get("status") == "running":
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"A job is already running: {status.get('label', 'unknown')}",
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            pass  # corrupt/missing file → allow start
+
+    runner_script = os.path.join(_PROJECT_ROOT, "cache_builder", "runner.py")
+    if not os.path.exists(runner_script):
+        raise HTTPException(status_code=500, detail=f"runner.py not found at {runner_script}")
+
+    try:
+        subprocess.Popen(
+            [sys.executable, runner_script, "step3"],
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to start runner: {exc}")
+
+    return {"status": "started", "message": "step3 launched in background"}
 
 
 # ── Saved queries ─────────────────────────────────────────────────────────────

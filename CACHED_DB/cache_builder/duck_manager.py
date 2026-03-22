@@ -8,6 +8,8 @@ Handles:
 """
 
 import time as _time
+import tempfile
+import os
 
 import duckdb
 import mysql.connector
@@ -129,7 +131,7 @@ def load_table(table_config: dict, start_date: str, end_date: str, duckdb_path: 
     # ── step 1 : MySQL connection ─────────────────────────────
     t0 = _time.perf_counter()
     mysql_conn = mysql.connector.connect(**MYSQL_CONFIG)
-    logger.info("[%s] step 1 MySQL connect          : %.3f s", table_name, _time.perf_counter() - t0)
+    print(f"  step 1  MySQL connect          : {_time.perf_counter()-t0:.3f}s")
 
     # ── step 2 : fetch rows ───────────────────────────────────
     t0 = _time.perf_counter()
@@ -142,18 +144,16 @@ def load_table(table_config: dict, start_date: str, end_date: str, duckdb_path: 
     finally:
         mysql_conn.close()
     total_rows = len(df)
-    logger.info("[%s] step 2 MySQL fetch (%d rows)  : %.3f s", table_name, total_rows, _time.perf_counter() - t0)
-    print(f"  Fetched {total_rows:,} rows from MySQL")
+    print(f"  step 2  MySQL fetch            : {_time.perf_counter()-t0:.3f}s  ({total_rows:,} rows)")
 
     if total_rows == 0:
         print("  Nothing to insert.")
-        logger.info("[%s] nothing to insert, skipping.", table_name)
         return 0
 
     # ── step 3 : replace empty strings ───────────────────────
     t0 = _time.perf_counter()
     df.replace("", np.nan, inplace=True)
-    logger.info("[%s] step 3 replace empty strings  : %.3f s", table_name, _time.perf_counter() - t0)
+    print(f"  step 3  replace empty strings  : {_time.perf_counter()-t0:.3f}s")
 
     # ── step 4 : timedelta → datetime.time conversion ────────
     t0 = _time.perf_counter()
@@ -161,12 +161,14 @@ def load_table(table_config: dict, start_date: str, end_date: str, duckdb_path: 
     for col in time_cols:
         if col in df.columns:
             df[col] = (pd.Timestamp("1970-01-01") + df[col]).dt.time
-    logger.info("[%s] step 4 timedelta fix (%d cols) : %.3f s", table_name, len(time_cols), _time.perf_counter() - t0)
+    print(f"  step 4  timedelta fix          : {_time.perf_counter()-t0:.3f}s  ({len(time_cols)} col(s))")
+
+    csv_path = None   # set in step 7, used for cleanup in finally
 
     # ── step 5 : DuckDB connection ────────────────────────────
     t0 = _time.perf_counter()
     duck_con = duckdb.connect(duckdb_path)
-    logger.info("[%s] step 5 DuckDB connect          : %.3f s", table_name, _time.perf_counter() - t0)
+    print(f"  step 5  DuckDB connect         : {_time.perf_counter()-t0:.3f}s")
 
     try:
         # ── step 6 : DELETE existing rows ────────────────────
@@ -178,29 +180,34 @@ def load_table(table_config: dict, start_date: str, end_date: str, duckdb_path: 
             )
         else:
             duck_con.execute(f"DELETE FROM {table_name}")
-        logger.info("[%s] step 6 DELETE existing rows   : %.3f s", table_name, _time.perf_counter() - t0)
+        print(f"  step 6  DELETE existing rows   : {_time.perf_counter()-t0:.3f}s")
 
-        # ── step 7 : register DataFrame ──────────────────────
+        # ── step 7 : write DataFrame to temp CSV ─────────────
         t0 = _time.perf_counter()
-        duck_con.register("_tmp_df", df)
-        logger.info("[%s] step 7 register DataFrame      : %.3f s", table_name, _time.perf_counter() - t0)
+        tmp = tempfile.NamedTemporaryFile(delete=False, suffix=".csv", mode="w")
+        df.to_csv(tmp.name, index=False)
+        tmp.close()
+        csv_path = tmp.name
+        print(f"  step 7  write temp CSV         : {_time.perf_counter()-t0:.3f}s")
 
-        # ── step 8 : INSERT ───────────────────────────────────
+        # ── step 8 : INSERT from CSV ──────────────────────────
         t0 = _time.perf_counter()
-        duck_con.execute(f"INSERT INTO {table_name} SELECT * FROM _tmp_df")
-        logger.info("[%s] step 8 INSERT into DuckDB      : %.3f s", table_name, _time.perf_counter() - t0)
+        duck_con.execute(f"INSERT INTO {table_name} SELECT * FROM read_csv('{csv_path}', all_varchar=true)")
+        print(f"  step 8  INSERT from read_csv   : {_time.perf_counter()-t0:.3f}s")
 
-        duck_con.unregister("_tmp_df")
+        logger.info("load_table [%s] inserted %d rows", table_name, total_rows)
         print(f"  Inserted {total_rows:,} rows into DuckDB")
 
     finally:
-        # ── step 9 : close / flush ────────────────────────────
+        # ── step 9 : close / flush + delete temp CSV ─────────
         t0 = _time.perf_counter()
         duck_con.close()
-        logger.info("[%s] step 9 DuckDB close/flush      : %.3f s", table_name, _time.perf_counter() - t0)
+        if csv_path and os.path.exists(csv_path):
+            os.unlink(csv_path)
+        print(f"  step 9  DuckDB close/flush     : {_time.perf_counter()-t0:.3f}s")
 
     elapsed = _time.perf_counter() - t_total
-    logger.info("[%s] TOTAL load_table               : %.3f s  (%d rows)", table_name, elapsed, total_rows)
+    print(f"  ── TOTAL {elapsed:.3f}s  ({total_rows:,} rows)")
     return total_rows
 
 

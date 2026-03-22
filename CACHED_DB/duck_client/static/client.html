@@ -225,7 +225,7 @@ kbd {
 }
 .limit-wrap input:focus { border-color: var(--accent); }
 
-/* ── results ─────────────────────────────────────── */
+/* ── results ───────────��─────────────────────────── */
 #results-wrap {
   flex: 1; overflow: auto; background: var(--panel-bg); position: relative; min-height: 0;
 }
@@ -307,6 +307,73 @@ td.is-bool { color: var(--accent2); }
 .q-del  { color: var(--error); border-color: #4a1f2a; }
 .q-del:hover  { background: #2a1020; }
 
+/* ── jobs panel ───────��──────────────────────────── */
+.job-dot {
+  width: 9px; height: 9px; border-radius: 50%; background: var(--text-muted);
+  flex-shrink: 0; cursor: pointer; transition: background .3s;
+}
+.job-dot.running { background: var(--warning); box-shadow: 0 0 0 3px rgba(249,226,175,.2); animation: pulse 1.2s infinite; }
+.job-dot.done    { background: var(--success); box-shadow: 0 0 0 3px rgba(166,227,161,.2); }
+.job-dot.failed  { background: var(--error);   box-shadow: 0 0 0 3px rgba(243,139,168,.2); }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+#btn-jobs { background: var(--border); color: var(--text-dim); font-size: 11px; padding: 3px 10px; border: none; border-radius: 4px; cursor: pointer; font-family: var(--font-ui); font-weight: 500; }
+#btn-jobs:hover { background: #35364f; color: var(--text); }
+#btn-jobs.active { background: var(--accent-light); color: var(--accent); }
+
+#jobs-panel {
+  position: fixed; top: var(--header-h); right: 0; bottom: 0; width: 340px;
+  background: var(--panel-bg); border-left: 1px solid var(--border);
+  box-shadow: -4px 0 20px rgba(0,0,0,.4);
+  transform: translateX(100%); transition: transform .2s ease;
+  z-index: 50; display: flex; flex-direction: column;
+}
+#jobs-panel.open { transform: translateX(0); }
+#jp-header {
+  padding: 11px 14px; border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; flex-shrink: 0;
+  background: var(--sidebar-bg);
+}
+#jp-header span { font-weight: 700; font-size: 13px; }
+#jp-close { background: none; border: none; cursor: pointer; font-size: 18px; color: var(--text-dim); line-height: 1; padding: 2px 4px; border-radius: 3px; }
+#jp-close:hover { background: var(--border); color: var(--text); }
+
+#jp-status-card {
+  margin: 12px 14px 0; padding: 12px 14px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--bg); flex-shrink: 0;
+}
+.jp-step-label { font-size: 12px; font-weight: 700; margin-bottom: 8px; }
+.jp-row { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-dim); margin-bottom: 4px; font-weight: 400; }
+.jp-row span:last-child { color: var(--text); font-family: var(--font-mono); }
+.jp-error-box { margin-top: 8px; padding: 8px 10px; background: rgba(243,139,168,.08); border: 1px solid rgba(243,139,168,.3); border-radius: 4px; font-size: 11px; color: var(--error); font-family: var(--font-mono); white-space: pre-wrap; word-break: break-all; font-weight: 400; max-height: 100px; overflow-y: auto; }
+
+.status-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 700; letter-spacing: .3px; }
+.status-badge.running { background: rgba(249,226,175,.15); color: var(--warning); border: 1px solid rgba(249,226,175,.3); }
+.status-badge.done    { background: rgba(166,227,161,.15); color: var(--success); border: 1px solid rgba(166,227,161,.3); }
+.status-badge.failed  { background: rgba(243,139,168,.15); color: var(--error);   border: 1px solid rgba(243,139,168,.3); }
+.status-badge.idle    { background: var(--border); color: var(--text-muted); border: 1px solid transparent; }
+
+#jp-start-wrap { margin: 10px 14px 0; flex-shrink: 0; }
+#btn-start-load {
+  width: 100%; padding: 8px 0; font-size: 12px; font-weight: 700; font-family: var(--font-ui);
+  border: none; border-radius: 5px; cursor: pointer;
+  background: var(--accent); color: #1e1e2e; transition: opacity .2s;
+}
+#btn-start-load:hover:not(:disabled) { opacity: .85; }
+#btn-start-load:disabled { opacity: .35; cursor: not-allowed; }
+#jp-start-msg { font-size: 10px; color: var(--text-muted); text-align: center; margin-top: 5px; min-height: 14px; }
+#jp-log-section { flex: 1; display: flex; flex-direction: column; min-height: 0; margin-top: 14px; }
+#jp-log-header { padding: 6px 14px; font-size: 10px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: var(--text-dim); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); background: var(--sidebar-bg); flex-shrink: 0; }
+#jp-log-list { overflow-y: auto; flex: 1; }
+#jp-log-list::-webkit-scrollbar { width: 4px; }
+#jp-log-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+.jp-log-item { padding: 8px 14px; border-bottom: 1px solid var(--border-light); }
+.jp-log-ts  { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); font-weight: 400; }
+.jp-log-lvl { font-size: 10px; font-weight: 700; margin: 0 6px; }
+.jp-log-lvl.ERROR   { color: var(--error); }
+.jp-log-lvl.WARNING { color: var(--warning); }
+.jp-log-msg { font-size: 11px; color: var(--text); font-family: var(--font-mono); word-break: break-all; font-weight: 400; margin-top: 2px; }
+
 /* ── export dropdown ─────────────────────────────── */
 .export-wrap { position: relative; }
 .export-menu {
@@ -345,6 +412,8 @@ td.is-bool { color: var(--accent2); }
   <span class="title">DuckDB Client</span>
   <span class="db-path" id="db-path">connecting…</span>
   <span class="spacer"></span>
+  <button id="btn-jobs" title="Runner job status">⚙ Jobs</button>
+  <span class="job-dot" id="job-dot" title="No jobs recently"></span>
   <span class="conn-dot" id="conn-dot" title="Disconnected"></span>
 </header>
 
@@ -402,6 +471,21 @@ td.is-bool { color: var(--accent2); }
         <button id="pg-next">Next ›</button>
       </div>
     </div>
+  </div>
+</div>
+
+<div id="jobs-panel">
+  <div id="jp-header"><span>Runner Status</span><button id="jp-close">×</button></div>
+  <div id="jp-status-card">
+    <div class="jp-step-label">No recent job</div>
+  </div>
+  <div id="jp-start-wrap">
+    <button id="btn-start-load">▶ Start Load (step3)</button>
+    <div id="jp-start-msg"></div>
+  </div>
+  <div id="jp-log-section">
+    <div id="jp-log-header">Recent Errors &amp; Warnings</div>
+    <div id="jp-log-list"><div style="padding:12px;color:var(--text-muted);font-size:11px">Loading…</div></div>
   </div>
 </div>
 
@@ -1065,6 +1149,144 @@ document.getElementById("save-modal").addEventListener("click", e => {
     document.body.style.cursor = ""; document.body.style.userSelect = "";
   });
 })();
+
+// ── Jobs panel ────────────────────────────────────────────────────────────────
+
+let _jobsPollTimer = null;
+
+function openJobsPanel() {
+  document.getElementById("jobs-panel").classList.add("open");
+  document.getElementById("btn-jobs").classList.add("active");
+  refreshJobStatus();
+  _startJobPolling();
+}
+function closeJobsPanel() {
+  document.getElementById("jobs-panel").classList.remove("open");
+  document.getElementById("btn-jobs").classList.remove("active");
+  _stopJobPolling();
+}
+
+function _startJobPolling() {
+  _stopJobPolling();
+  _jobsPollTimer = setInterval(refreshJobStatus, 5000);
+}
+function _stopJobPolling() {
+  if (_jobsPollTimer) { clearInterval(_jobsPollTimer); _jobsPollTimer = null; }
+}
+
+async function refreshJobStatus() {
+  try {
+    const [statusData, logData] = await Promise.all([
+      apiFetch("/duck/runner/status"),
+      apiFetch("/duck/runner/logs?lines=30"),
+    ]);
+    _renderJobStatus(statusData);
+    _renderJobLogs(logData);
+
+    // Keep polling if running, stop if idle/done/failed and panel is closed
+    if (statusData.status === "running") {
+      if (!_jobsPollTimer) _startJobPolling();
+    } else if (!document.getElementById("jobs-panel").classList.contains("open")) {
+      _stopJobPolling();
+    }
+  } catch (_) { /* silently ignore if backend unavailable */ }
+}
+
+function _renderJobStatus(d) {
+  const dot  = document.getElementById("job-dot");
+  const card = document.getElementById("jp-status-card");
+
+  // Update header dot
+  dot.className = "job-dot " + (d.status || "idle");
+  dot.title     = d.label || "No recent job";
+
+  // Keep start button in sync with running state
+  const btnStart = document.getElementById("btn-start-load");
+  if (btnStart) {
+    btnStart.disabled = (d.status === "running");
+  }
+
+  if (!d.step) {
+    card.innerHTML = `<div class="jp-step-label" style="color:var(--text-muted)">No jobs recorded yet.</div>`;
+    return;
+  }
+
+  const badge   = `<span class="status-badge ${d.status}">${d.status.toUpperCase()}</span>`;
+  const start   = d.start_time ? d.start_time.replace("T", " ") : "—";
+  const end     = d.end_time   ? d.end_time.replace("T", " ")   : (d.status === "running" ? "running…" : "—");
+  const errBox  = d.error
+    ? `<div class="jp-error-box">${escHtml(d.error)}</div>`
+    : "";
+
+  card.innerHTML = `
+    <div class="jp-step-label">${escHtml(d.label || d.step)}  ${badge}</div>
+    <div class="jp-row"><span>Started</span><span>${escHtml(start)}</span></div>
+    <div class="jp-row"><span>Ended</span><span>${escHtml(end)}</span></div>
+    ${d.message ? `<div class="jp-row"><span>Info</span><span>${escHtml(d.message)}</span></div>` : ""}
+    ${errBox}`;
+}
+
+function _renderJobLogs(d) {
+  const list = document.getElementById("jp-log-list");
+  if (!d.exists) {
+    list.innerHTML = `<div style="padding:12px;color:var(--text-muted);font-size:11px">Log file not found.</div>`;
+    return;
+  }
+  if (!d.entries.length) {
+    list.innerHTML = `<div style="padding:12px;color:var(--text-muted);font-size:11px">No errors or warnings.</div>`;
+    return;
+  }
+  list.innerHTML = [...d.entries].reverse().map(e => `
+    <div class="jp-log-item">
+      <div>
+        <span class="jp-log-ts">${escHtml(e.timestamp)}</span>
+        <span class="jp-log-lvl ${e.level}">${escHtml(e.level)}</span>
+      </div>
+      <div class="jp-log-msg">${escHtml(e.message)}</div>
+    </div>`).join("");
+}
+
+document.getElementById("btn-jobs").addEventListener("click", () => {
+  document.getElementById("jobs-panel").classList.contains("open")
+    ? closeJobsPanel()
+    : openJobsPanel();
+});
+document.getElementById("jp-close").addEventListener("click", closeJobsPanel);
+
+document.getElementById("btn-start-load").addEventListener("click", async () => {
+  const btn = document.getElementById("btn-start-load");
+  const msg = document.getElementById("jp-start-msg");
+  btn.disabled = true;
+  msg.textContent = "Starting…";
+  try {
+    const r = await fetch("/duck/runner/start", { method: "POST" });
+    if (r.status === 409) {
+      msg.textContent = "Already running — wait for it to finish.";
+      msg.style.color = "var(--warning)";
+    } else if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      msg.textContent = d.detail || "Failed to start.";
+      msg.style.color = "var(--error)";
+      btn.disabled = false;
+    } else {
+      msg.textContent = "Load started. Polling for status…";
+      msg.style.color = "var(--success)";
+      _startJobPolling();
+      setTimeout(refreshJobStatus, 800);
+    }
+  } catch (e) {
+    msg.textContent = "Network error — is the server running?";
+    msg.style.color = "var(--error)";
+    btn.disabled = false;
+  }
+});
+
+// Poll silently in background to keep the header dot updated
+setInterval(() => {
+  apiFetch("/duck/runner/status")
+    .then(_renderJobStatus)
+    .catch(() => {});
+}, 10000);
 
 // ── Auto-save ─────────────────────────────────────────────────────────────────
 // Every 5 min, silently save every tab that has changed content.
