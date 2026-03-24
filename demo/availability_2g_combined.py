@@ -11,8 +11,8 @@ MYSQL_CONFIG = {
     "database": "performanceroute",
 }
 
-DATE_START  = "2026-03-09"
-DATE_END    = "2026-03-15"
+DATE_START  = "2026-03-16"
+DATE_END    = "2026-03-22"
 OUTPUT_FILE = f"excel_output/availability_2g_{DATE_START}_{DATE_END}.xlsx"
 
 # ── Ericsson queries ───────────────────────────────────────────

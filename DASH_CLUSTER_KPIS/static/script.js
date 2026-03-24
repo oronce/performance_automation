@@ -7,22 +7,24 @@ const APP_PASSWORD = '123123';
 // Colors for compare mode (up to 7 days)
 const DAY_COLORS = [
     '#3498db', // blue
-    '#e74c3c', // red
+    '#f59905', // orange
     '#2ecc71', // green
-    '#f39c12', // orange
     '#9b59b6', // purple
     '#1abc9c', // teal
     '#e67e22', // dark orange
+    '#8e44ad', // dark purple
 ];
 
 let config        = null;
 let charts        = {};
-let currentView   = 'hourly';   // 'hourly' | 'daily' | 'compare'
+let currentTech   = '2g';      // active technology key
+let currentVendor = null;      // active vendor key (set on init)
+let currentView   = 'hourly';  // 'hourly' | 'daily' | 'compare'
 let currentBatch  = 'all';
-let dateMode      = 'range';    // 'range' | 'specific'
-let specificDates = [];         // array of 'YYYY-MM-DD' strings
-let compareDays   = [];         // array of 'YYYY-MM-DD' strings
-let popupBatch    = null;       // which batch the popup is for
+let dateMode      = 'range';   // 'range' | 'specific'
+let specificDates = [];
+let compareDays   = [];
+let popupBatch    = null;
 let popupTimer    = null;
 
 // =============================================================================
@@ -66,13 +68,16 @@ async function initDashboard() {
     try {
         config = await fetchConfig();
 
-        // Show cell counts on batch buttons
-        Object.entries(config.batches).forEach(([key, info]) => {
-            const el = document.getElementById(`count-${key}`);
-            if (el && info.count !== null) el.textContent = `(${info.count})`;
-        });
+        // Set initial state: first tech and its first vendor
+        currentTech   = Object.keys(config.technologies)[0];
+        currentVendor = Object.keys(config.technologies[currentTech].vendors)[0];
+        currentBatch  = 'all';
 
-        setupClusterPopup();
+        renderTechButtons();
+        renderVendorButtons(currentTech);
+        renderBatchButtons(currentTech, currentVendor);
+        setupPopupButtons();
+        updateSubtitle();
         setupDateInputs();
         setupEventListeners();
         initCompareRows();
@@ -99,11 +104,167 @@ async function fetchDefaultDates() {
 }
 
 async function fetchKPIData(params) {
-    const qs = new URLSearchParams(params).toString();
+    const qs  = new URLSearchParams(params).toString();
     const res = await fetch(`/api/kpi-data?${qs}`);
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || 'Failed to fetch data');
     return data;
+}
+
+// =============================================================================
+// TECHNOLOGY BUTTONS
+// =============================================================================
+
+function renderTechButtons() {
+    const container = document.getElementById('tech-buttons');
+    container.innerHTML = Object.entries(config.technologies).map(([key, info]) =>
+        `<button class="btn btn-toggle${key === currentTech ? ' active' : ''}" data-tech="${key}">${info.label}</button>`
+    ).join('');
+
+    container.querySelectorAll('[data-tech]').forEach(btn => {
+        btn.addEventListener('click', async e => {
+            const selected = e.currentTarget.dataset.tech;
+            if (selected === currentTech) return;
+
+            currentTech   = selected;
+            currentVendor = Object.keys(config.technologies[currentTech].vendors)[0];
+            currentBatch  = 'all';
+
+            container.querySelectorAll('[data-tech]').forEach(b => b.classList.remove('active'));
+            e.currentTarget.classList.add('active');
+
+            renderVendorButtons(currentTech);
+            renderBatchButtons(currentTech, currentVendor);
+            updateSubtitle();
+            await reloadCurrentDates();
+        });
+    });
+}
+
+// =============================================================================
+// VENDOR BUTTONS
+// =============================================================================
+
+function renderVendorButtons(tech) {
+    const container = document.getElementById('vendor-buttons');
+    const vendors   = config.technologies[tech]?.vendors || {};
+
+    container.innerHTML = Object.entries(vendors).map(([key, info]) =>
+        `<button class="btn btn-toggle${key === currentVendor ? ' active' : ''}" data-vendor="${key}">${info.label}</button>`
+    ).join('');
+
+    container.querySelectorAll('[data-vendor]').forEach(btn => {
+        btn.addEventListener('click', async e => {
+            const selected = e.currentTarget.dataset.vendor;
+            if (selected === currentVendor) return;
+
+            currentVendor = selected;
+            currentBatch  = 'all';
+
+            container.querySelectorAll('[data-vendor]').forEach(b => b.classList.remove('active'));
+            e.currentTarget.classList.add('active');
+
+            renderBatchButtons(currentTech, currentVendor);
+            updateSubtitle();
+            await reloadCurrentDates();
+        });
+    });
+}
+
+// =============================================================================
+// BATCH BUTTONS  (dynamic per tech + vendor)
+// =============================================================================
+
+function renderBatchButtons(tech, vendor) {
+    const container = document.getElementById('batch-buttons');
+    const vendorCfg = config.technologies[tech]?.vendors[vendor] || {};
+    const batches   = vendorCfg.batches || {};
+
+    // "All Cells" is always first
+    let html = `<button class="btn btn-batch${currentBatch === 'all' ? ' active' : ''}" data-batch="all">All Cells</button>`;
+
+    Object.entries(batches).forEach(([key, info]) => {
+        if (key === 'all') return;
+        const count = info.count !== null ? ` (${info.count})` : '';
+        html += `<button class="btn btn-batch${currentBatch === key ? ' active' : ''}" data-batch="${key}">${info.label}${count}</button>`;
+    });
+
+    container.innerHTML = html;
+
+    // Click events
+    container.querySelectorAll('.btn-batch').forEach(btn => {
+        btn.addEventListener('click', async e => {
+            const clicked = e.currentTarget;
+            currentBatch  = clicked.dataset.batch;
+            container.querySelectorAll('.btn-batch').forEach(b => b.classList.remove('active'));
+            clicked.classList.add('active');
+            if (currentView === 'compare') await triggerCompare();
+            else await reloadCurrentDates();
+        });
+    });
+
+    // Hover popup for batches that have cells
+    Object.entries(batches).forEach(([key, info]) => {
+        if (key === 'all' || !info.cells || info.cells.length === 0) return;
+        const btn = container.querySelector(`[data-batch="${key}"]`);
+        if (!btn) return;
+        btn.addEventListener('mouseenter', () => showClusterPopup(key, btn));
+    });
+}
+
+// =============================================================================
+// CLUSTER POPUP
+// =============================================================================
+
+function setupPopupButtons() {
+    document.getElementById('popup-download-btn').addEventListener('click', () => {
+        if (popupBatch) {
+            window.location.href = `/api/cluster-cells/${currentTech}/${currentVendor}/${popupBatch}/download`;
+        }
+    });
+    document.getElementById('popup-close-btn').addEventListener('click', hideClusterPopup);
+}
+
+function showClusterPopup(batch, anchorEl) {
+    const vendorCfg = config.technologies[currentTech]?.vendors[currentVendor];
+    if (!vendorCfg || !vendorCfg.batches[batch]) return;
+    clearTimeout(popupTimer);
+    popupBatch = batch;
+
+    const info  = vendorCfg.batches[batch];
+    const cells = info.cells || [];
+
+    document.getElementById('popup-title').textContent = info.label;
+    document.getElementById('popup-count').textContent = `${cells.length} cells`;
+    document.getElementById('popup-cells').innerHTML   =
+        cells.map(c => `<span class="cell-chip">${c}</span>`).join('');
+
+    const popup = document.getElementById('cluster-popup');
+    popup.style.display = 'block';
+
+    const rect        = anchorEl.getBoundingClientRect();
+    const popupHeight = popup.offsetHeight;
+    popup.style.left  = `${rect.left + window.scrollX}px`;
+    popup.style.top   = `${rect.top  + window.scrollY - popupHeight - 8}px`;
+
+    popupTimer = setTimeout(hideClusterPopup, 5000);
+}
+
+function hideClusterPopup() {
+    clearTimeout(popupTimer);
+    document.getElementById('cluster-popup').style.display = 'none';
+    popupBatch = null;
+}
+
+// =============================================================================
+// SUBTITLE
+// =============================================================================
+
+function updateSubtitle() {
+    const techLabel   = config.technologies[currentTech]?.label   || currentTech.toUpperCase();
+    const vendorLabel = config.technologies[currentTech]?.vendors[currentVendor]?.label || currentVendor;
+    document.getElementById('header-subtitle').textContent =
+        `${techLabel} \u2014 ${vendorLabel} \u2014 Network Performance Indicators`;
 }
 
 // =============================================================================
@@ -122,7 +283,7 @@ function validateDateRange(startDate, endDate) {
     const start = new Date(startDate);
     const end   = new Date(endDate);
     if (isNaN(start) || isNaN(end)) return { valid: false, error: 'Invalid date format' };
-    if (start > end)                 return { valid: false, error: 'Start date must be before end date' };
+    if (start > end)                return { valid: false, error: 'Start date must be before end date' };
     const days = Math.ceil(Math.abs(end - start) / 86400000) + 1;
     const max  = config ? config.max_days : 30;
     if (days > max) return { valid: false, error: `Maximum ${max} days allowed. You selected ${days} days.` };
@@ -137,56 +298,6 @@ function getDateRangeFromDays(days) {
         startDate: start.toISOString().split('T')[0],
         endDate:   today.toISOString().split('T')[0]
     };
-}
-
-// =============================================================================
-// CLUSTER POPUP (hover to show cells, download XLSX)
-// =============================================================================
-
-function setupClusterPopup() {
-    ['batch1', 'batch2'].forEach(batch => {
-        const btn = document.getElementById(`btn-${batch}`);
-        if (!btn) return;
-        btn.addEventListener('mouseenter', () => showClusterPopup(batch, btn));
-    });
-
-    document.getElementById('popup-download-btn').addEventListener('click', () => {
-        if (popupBatch) window.location.href = `/api/cluster-cells/${popupBatch}/download`;
-    });
-
-    document.getElementById('popup-close-btn').addEventListener('click', hideClusterPopup);
-}
-
-function showClusterPopup(batch, anchorEl) {
-    if (!config || !config.batches[batch]) return;
-    clearTimeout(popupTimer);
-    popupBatch = batch;
-
-    const info  = config.batches[batch];
-    const cells = info.cells || [];
-
-    document.getElementById('popup-title').textContent = info.label;
-    document.getElementById('popup-count').textContent = `${cells.length} cells`;
-    document.getElementById('popup-cells').innerHTML =
-        cells.map(c => `<span class="cell-chip">${c}</span>`).join('');
-
-    const popup = document.getElementById('cluster-popup');
-    popup.style.display = 'block';
-
-    // Position ABOVE the button
-    const rect        = anchorEl.getBoundingClientRect();
-    const popupHeight = popup.offsetHeight;
-    popup.style.left  = `${rect.left + window.scrollX}px`;
-    popup.style.top   = `${rect.top + window.scrollY - popupHeight - 8}px`;
-
-    // Auto-dismiss after 5 seconds
-    popupTimer = setTimeout(hideClusterPopup, 5000);
-}
-
-function hideClusterPopup() {
-    clearTimeout(popupTimer);
-    document.getElementById('cluster-popup').style.display = 'none';
-    popupBatch = null;
 }
 
 // =============================================================================
@@ -221,18 +332,17 @@ function renderDateTags() {
 // =============================================================================
 
 function initCompareRows() {
-    // Start with 2 rows
     compareDays = ['', ''];
     renderCompareRows();
 }
 
 function renderCompareRows() {
-    const list = document.getElementById('compare-days-list');
-    const max  = config ? config.max_compare_days : 7;
+    const list  = document.getElementById('compare-days-list');
+    const max   = config ? config.max_compare_days : 7;
     const today = new Date().toISOString().split('T')[0];
 
     list.innerHTML = compareDays.map((day, i) => {
-        const color   = DAY_COLORS[i % DAY_COLORS.length];
+        const color     = DAY_COLORS[i % DAY_COLORS.length];
         const canRemove = compareDays.length > 2;
         return `
             <div class="compare-day-row">
@@ -244,14 +354,12 @@ function renderCompareRows() {
             </div>`;
     }).join('');
 
-    // Wire change events
     list.querySelectorAll('.compare-day-input').forEach(input => {
         input.addEventListener('change', e => {
             compareDays[parseInt(e.target.dataset.index)] = e.target.value;
         });
     });
 
-    // Show/hide "Add Day" button
     const addBtn = document.getElementById('add-compare-day');
     if (addBtn) addBtn.style.display = compareDays.length >= max ? 'none' : '';
 }
@@ -275,27 +383,16 @@ function removeCompareDay(idx) {
 
 function setupEventListeners() {
     // View toggle
-    document.querySelectorAll('.btn-toggle').forEach(btn => {
+    document.querySelectorAll('.btn-toggle[data-view]').forEach(btn => {
         btn.addEventListener('click', async e => {
             currentView = e.target.dataset.view;
-            document.querySelectorAll('.btn-toggle').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.btn-toggle[data-view]').forEach(b => b.classList.remove('active'));
             e.target.classList.add('active');
             const isCompare = currentView === 'compare';
             document.getElementById('normal-date-section').style.display = isCompare ? 'none' : '';
             document.getElementById('compare-section').style.display     = isCompare ? '' : 'none';
             document.getElementById('quick-select-group').style.display  = isCompare ? 'none' : '';
             if (!isCompare) await reloadCurrentDates();
-        });
-    });
-
-    // Batch buttons
-    document.querySelectorAll('.btn-batch').forEach(btn => {
-        btn.addEventListener('click', async e => {
-            currentBatch = e.target.dataset.batch;
-            document.querySelectorAll('.btn-batch').forEach(b => b.classList.remove('active'));
-            e.target.classList.add('active');
-            if (currentView === 'compare') await triggerCompare();
-            else await reloadCurrentDates();
         });
     });
 
@@ -308,14 +405,13 @@ function setupEventListeners() {
             document.getElementById('end-date').value   = endDate;
             document.querySelectorAll('.btn-quick').forEach(b => b.classList.remove('active'));
             e.target.classList.add('active');
-            // Switch to range mode if in specific mode
             if (dateMode === 'specific') switchDateMode('range');
             await loadRangeData(startDate, endDate);
         });
     });
 
     // Date mode toggle
-    document.getElementById('btn-mode-range').addEventListener('click', () => switchDateMode('range'));
+    document.getElementById('btn-mode-range').addEventListener('click',    () => switchDateMode('range'));
     document.getElementById('btn-mode-specific').addEventListener('click', () => switchDateMode('specific'));
 
     // Range apply
@@ -367,7 +463,7 @@ function switchDateMode(mode) {
     dateMode = mode;
     document.getElementById('range-inputs').style.display    = mode === 'range'    ? '' : 'none';
     document.getElementById('specific-inputs').style.display = mode === 'specific' ? '' : 'none';
-    document.getElementById('btn-mode-range').classList.toggle('active', mode === 'range');
+    document.getElementById('btn-mode-range').classList.toggle('active',    mode === 'range');
     document.getElementById('btn-mode-specific').classList.toggle('active', mode === 'specific');
 }
 
@@ -391,7 +487,6 @@ async function loadDefaultData() {
         document.getElementById('start-date').value = defaults.start_date;
         document.getElementById('end-date').value   = defaults.end_date;
 
-        // Pre-fill compare rows
         if (compareDays.length >= 2) {
             compareDays[0] = defaults.start_date;
             compareDays[1] = defaults.end_date;
@@ -412,13 +507,15 @@ async function loadRangeData(startDate, endDate) {
     clearError();
     try {
         const result = await fetchKPIData({
-            view: currentView === 'compare' ? 'hourly' : currentView,
-            batch: currentBatch,
+            tech:       currentTech,
+            vendor:     currentVendor,
+            view:       currentView === 'compare' ? 'hourly' : currentView,
+            batch:      currentBatch,
             start_date: startDate,
-            end_date: endDate
+            end_date:   endDate
         });
         if (result.success) {
-            updateStatusBar(`${startDate} → ${endDate}`, result.total_records);
+            updateStatusBar(`${startDate} \u2192 ${endDate}`, result.total_records);
             renderCharts(result.data);
         }
     } catch (err) {
@@ -433,9 +530,11 @@ async function loadSpecificData(dates) {
     clearError();
     try {
         const result = await fetchKPIData({
-            view: currentView === 'compare' ? 'hourly' : currentView,
-            batch: currentBatch,
-            dates: dates.join(',')
+            tech:   currentTech,
+            vendor: currentVendor,
+            view:   currentView === 'compare' ? 'hourly' : currentView,
+            batch:  currentBatch,
+            dates:  dates.join(',')
         });
         if (result.success) {
             updateStatusBar(dates.join(', '), result.total_records);
@@ -449,13 +548,12 @@ async function loadSpecificData(dates) {
 }
 
 async function triggerCompare() {
-    // Collect filled days from inputs (update compareDays from DOM)
     document.querySelectorAll('.compare-day-input').forEach(input => {
         compareDays[parseInt(input.dataset.index)] = input.value;
     });
 
     const filled = compareDays.filter(d => d.trim() !== '');
-    if (filled.length < 2) { showError('Please select at least 2 days to compare'); return; }
+    if (filled.length < 2)                      { showError('Please select at least 2 days to compare'); return; }
     if (new Set(filled).size !== filled.length) { showError('Please select different dates'); return; }
 
     const max = config ? config.max_compare_days : 7;
@@ -464,16 +562,20 @@ async function triggerCompare() {
     clearError();
     showLoading(true);
     try {
-        // ONE API call with all days — backend returns all rows, frontend groups by date
         const result = await fetchKPIData({
-            view: 'hourly',
-            batch: currentBatch,
-            dates: filled.join(',')
+            tech:   currentTech,
+            vendor: currentVendor,
+            view:   'hourly',
+            batch:  currentBatch,
+            dates:  filled.join(',')
         });
         if (result.success) {
-            const batchLabel = { all: 'All Cells', batch1: 'Cluster 1', batch2: 'Cluster 2' }[currentBatch];
+            const vendorCfg  = config.technologies[currentTech]?.vendors[currentVendor];
+            const batchLabel = vendorCfg?.batches[currentBatch]?.label || 'All Cells';
+            const techLabel  = config.technologies[currentTech]?.label || currentTech;
+            const vendorLabel = vendorCfg?.label || currentVendor;
             document.getElementById('current-range').textContent =
-                `Comparing ${filled.length} days | ${batchLabel} | ${result.total_records} records`;
+                `Comparing ${filled.length} days | ${techLabel} | ${vendorLabel} | ${batchLabel} | ${result.total_records} records`;
             renderCompareCharts(result.data, filled);
         }
     } catch (err) {
@@ -498,15 +600,17 @@ function renderCharts(data) {
         return;
     }
 
-    const isDaily  = currentView === 'daily';
+    const isDaily   = currentView === 'daily';
     const labelData = data.map(row => ({
         date: row.date,
         time: row.time || '',
         full: isDaily ? row.date : (row.time ? `${row.date} ${row.time}` : row.date)
     }));
 
-    Object.entries(config.kpi_groups).forEach(([title, cfg], idx) => {
-        const columns  = Array.isArray(cfg) ? cfg : cfg.columns;
+    const kpiGroups = config.technologies[currentTech].vendors[currentVendor].kpi_groups;
+
+    Object.entries(kpiGroups).forEach(([title, cfg], idx) => {
+        const columns   = Array.isArray(cfg) ? cfg : cfg.columns;
         const threshold = Array.isArray(cfg) ? null : cfg.threshold;
         const available = columns.filter(col => data[0].hasOwnProperty(col));
         if (available.length === 0) return;
@@ -515,9 +619,9 @@ function renderCharts(data) {
         container.appendChild(card);
 
         const datasets = available.map((col, i) => ({
-            label: col.replace(/_/g, ' '),
-            data: data.map(row => row[col] !== null ? row[col] : null),
-            borderColor: config.colors[i % config.colors.length],
+            label:           col.replace(/_/g, ' '),
+            data:            data.map(row => row[col] !== null ? row[col] : null),
+            borderColor:     config.colors[i % config.colors.length],
             backgroundColor: config.colors[i % config.colors.length] + '22',
             borderWidth: 2, fill: false, tension: 0.15,
             pointRadius: data.length > 100 ? 0 : 2, pointHoverRadius: 5
@@ -549,17 +653,17 @@ function renderCompareCharts(data, days) {
         return;
     }
 
-    // Collect all hours present, sorted
     const allTimes = Array.from(new Set(data.map(r => r.time))).sort();
 
-    // Index data: { date → { time → row } }
     const byDate = {};
     data.forEach(row => {
         if (!byDate[row.date]) byDate[row.date] = {};
         byDate[row.date][row.time] = row;
     });
 
-    Object.entries(config.kpi_groups).forEach(([title, cfg], idx) => {
+    const kpiGroups = config.technologies[currentTech].vendors[currentVendor].kpi_groups;
+
+    Object.entries(kpiGroups).forEach(([title, cfg], idx) => {
         const columns   = Array.isArray(cfg) ? cfg : cfg.columns;
         const threshold = Array.isArray(cfg) ? null : cfg.threshold;
         const col       = columns[0];
@@ -570,9 +674,9 @@ function renderCompareCharts(data, days) {
         container.appendChild(card);
 
         const datasets = days.map((day, i) => ({
-            label: `${day}`,
-            data: allTimes.map(t => byDate[day]?.[t]?.[col] ?? null),
-            borderColor: DAY_COLORS[i % DAY_COLORS.length],
+            label:           `${day}`,
+            data:            allTimes.map(t => byDate[day]?.[t]?.[col] ?? null),
+            borderColor:     DAY_COLORS[i % DAY_COLORS.length],
             backgroundColor: DAY_COLORS[i % DAY_COLORS.length] + '22',
             borderWidth: 2, fill: false, tension: 0.15,
             pointRadius: 2, pointHoverRadius: 5,
@@ -581,12 +685,11 @@ function renderCompareCharts(data, days) {
 
         if (threshold !== null) datasets.push(thresholdDataset(threshold, allTimes.length));
 
-        const timeLabels = allTimes.map(t => ({ date: '', time: t, full: t }));
         const ctx = document.getElementById(`chart-${idx}`).getContext('2d');
         charts[`chart-${idx}`] = new Chart(ctx, {
             type: 'line',
             data: { labels: allTimes, datasets },
-            options: chartOptions(title, false, timeLabels)
+            options: chartOptions(title, false, allTimes.map(t => ({ date: '', time: t, full: t })))
         });
     });
 }
@@ -596,7 +699,7 @@ function renderCompareCharts(data, days) {
 // =============================================================================
 
 function createChartCard(title, threshold, idx) {
-    const card = document.createElement('div');
+    const card  = document.createElement('div');
     card.className = 'chart-card';
     const badge = threshold !== null
         ? `<span class="threshold-info">Threshold: ${threshold}</span>` : '';
@@ -608,9 +711,10 @@ function createChartCard(title, threshold, idx) {
 
 function thresholdDataset(threshold, length) {
     return {
-        label: `Target (${threshold})`,
-        data: Array(length).fill(threshold),
-        borderColor: '#FFB347', backgroundColor: 'transparent',
+        label:           `Target (${threshold})`,
+        data:            Array(length).fill(threshold),
+        borderColor:     '#e74c3c',
+        backgroundColor: 'transparent',
         borderWidth: 2, borderDash: [8, 4],
         fill: false, pointRadius: 0, pointHoverRadius: 0
     };
@@ -642,7 +746,6 @@ function chartOptions(title, isDaily, labelData) {
                         const cur = labelData[tickValue];
                         if (!cur) return '';
                         if (isDaily) return cur.date;
-                        // Compare against previous VISIBLE tick's date (not previous data point)
                         const prevTick = index > 0 ? ticks[index - 1] : null;
                         const prevDate = prevTick && labelData[prevTick.value]
                             ? labelData[prevTick.value].date : null;
@@ -667,17 +770,21 @@ function showLoading(show) {
 
 function showError(msg) {
     const el = document.getElementById('error-message');
-    el.textContent = msg;
+    el.textContent   = msg;
     el.style.display = 'inline';
 }
 
 function clearError() {
     const el = document.getElementById('error-message');
-    el.textContent = '';
+    el.textContent   = '';
     el.style.display = 'none';
 }
 
 function updateStatusBar(dateLabel, total) {
-    const batchLabel = { all: 'All Cells', batch1: 'Cluster 1', batch2: 'Cluster 2' }[currentBatch] || currentBatch;
-    document.getElementById('current-range').textContent = `${dateLabel} | ${batchLabel} | ${total} records`;
+    const techLabel   = config.technologies[currentTech]?.label || currentTech;
+    const vendorCfg   = config.technologies[currentTech]?.vendors[currentVendor];
+    const vendorLabel = vendorCfg?.label || currentVendor;
+    const batchLabel  = vendorCfg?.batches[currentBatch]?.label || 'All Cells';
+    document.getElementById('current-range').textContent =
+        `${dateLabel} | ${techLabel} | ${vendorLabel} | ${batchLabel} | ${total} records`;
 }

@@ -36,29 +36,43 @@
     <div class="container">
         <header>
             <h1>Cluster KPI Dashboard</h1>
-            <p class="subtitle">Huawei 2G &mdash; Network Performance Indicators</p>
+            <p class="subtitle" id="header-subtitle">Network Performance Indicators</p>
         </header>
 
         <!-- Filter Section -->
         <div class="filter-section">
 
-            <!-- Row 1: View mode | Cluster | Quick select -->
+            <!-- Row 0: Technology | Vendor -->
             <div class="filter-row">
+                <div class="filter-group">
+                    <label>Technology:</label>
+                    <div class="view-toggle" id="tech-buttons">
+                        <!-- rendered by JS from config.technologies -->
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <label>Vendor:</label>
+                    <div class="view-toggle" id="vendor-buttons">
+                        <!-- rendered by JS when technology is selected -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Row 1: Cluster | View Mode | Quick select -->
+            <div class="filter-row">
+                <div class="filter-group">
+                    <label>Cluster:</label>
+                    <div class="quick-buttons" id="batch-buttons">
+                        <!-- rendered by JS when vendor is selected -->
+                    </div>
+                </div>
+
                 <div class="filter-group">
                     <label>View Mode:</label>
                     <div class="view-toggle">
                         <button class="btn btn-toggle active" data-view="hourly">Hourly</button>
                         <button class="btn btn-toggle" data-view="daily">Daily</button>
                         <button class="btn btn-toggle btn-compare" data-view="compare">Compare Days</button>
-                    </div>
-                </div>
-
-                <div class="filter-group">
-                    <label>Cluster:</label>
-                    <div class="quick-buttons" id="batch-buttons">
-                        <button class="btn btn-batch active" data-batch="all">All Cells</button>
-                        <button class="btn btn-batch" data-batch="batch1" id="btn-batch1">Cluster 1 <span class="cell-count" id="count-batch1"></span></button>
-                        <button class="btn btn-batch" data-batch="batch2" id="btn-batch2">Cluster 2 <span class="cell-count" id="count-batch2"></span></button>
                     </div>
                 </div>
 
@@ -75,7 +89,6 @@
 
             <!-- Row 2a: Normal date mode (range / specific) — hidden in compare -->
             <div id="normal-date-section">
-                <!-- Date mode toggle -->
                 <div class="filter-row">
                     <div class="filter-group">
                         <label>Date Mode:</label>
@@ -138,6 +151,6 @@
         <div id="charts-container" class="charts-grid"></div>
     </div>
 
-    <script src="/static/script.js?v=6"></script>
+    <script src="/static/script.js?v=8"></script>
 </body>
 </html>

@@ -50,27 +50,27 @@ _HOURLY_WITH_TIME_UPPERCASE = {"varchar_to_decimal": True, "auto_detect": False,
 _EPT    = {"varchar_to_decimal": True, "auto_detect": True , "cleanup": True}
 
 TABLES = [
-   ### #── Huawei hourly ─────────────────────────────────────────
-    # {"mysql_table": "hourly_huawei_2g_all_counters",              **_HOURLY},
-    # {"mysql_table": "hourly_huawei_3g_all_counters_1",            **_HOURLY},
-    # {"mysql_table": "hourly_huawei_3g_all_counters_2",            **_HOURLY},
-    # {"mysql_table": "hourly_huawei_3g_packet_loss",               **_HOURLY},
-    {"mysql_table": "hourly_huawei_4g_all_counters_1",            **_HOURLY},
-    # {"mysql_table": "hourly_huawei_4g_all_counters_2",            **_HOURLY},
-    # {"mysql_table": "hourly_huawei_4g_packet_loss",               **_HOURLY},
-    ### ── Huawei ARCEP hourly ───────────────────────────────────
-    # {"mysql_table": "hourly_arcep_huawei_2g",                     **_HOURLY},
-    # {"mysql_table": "hourly_arcep_huawei_3g",                     **_HOURLY},
-    # {"mysql_table": "hourly_arcep_huawei_4g",                     **_HOURLY},
-   ### #── Ericsson ARCEP hourly ─────────────────────────────────
-    # {"mysql_table": "hourly_ericsson_arcep_2g_counters",          **_HOURLY_WITH_TIME_UPPERCASE},
-    # {"mysql_table": "hourly_ericsson_arcep_3g_counters",          **_HOURLY_WITH_TIME_UPPERCASE},
-    {"mysql_table": "hourly_ericsson_arcep_4g_counters",          **_HOURLY_WITH_TIME_UPPERCASE},
-    # ##### ── Ericsson packet loss hourly ───────────────────────────
-    # {"mysql_table": "hourly_ericsson_packet_loss_bb_3g_counters", **_HOURLY_WITH_TIME_UPPERCASE},
-    # {"mysql_table": "hourly_ericsson_packet_loss_bb_4g_counters", **_HOURLY_WITH_TIME_UPPERCASE},
-    # {"mysql_table": "hourly_ericsson_packet_loss_du_3g_counters", **_HOURLY_WITH_TIME_UPPERCASE},
-    # {"mysql_table": "hourly_ericsson_packet_loss_du_4g_counters", **_HOURLY_WITH_TIME_UPPERCASE},
+#    ## #── Huawei hourly ─────────────────────────────────────────
+#     {"mysql_table": "hourly_huawei_2g_all_counters",              **_HOURLY},
+#     {"mysql_table": "hourly_huawei_3g_all_counters_1",            **_HOURLY},
+#     {"mysql_table": "hourly_huawei_3g_all_counters_2",            **_HOURLY},
+#     {"mysql_table": "hourly_huawei_3g_packet_loss",               **_HOURLY},
+#     {"mysql_table": "hourly_huawei_4g_all_counters_1",            **_HOURLY},
+#     #{"mysql_table": "hourly_huawei_4g_all_counters_2",            **_HOURLY},
+#     {"mysql_table": "hourly_huawei_4g_packet_loss",               **_HOURLY},
+#     ## ── Huawei ARCEP hourly ───────────────────────────────────
+#     # {"mysql_table": "hourly_arcep_huawei_2g",                     **_HOURLY},
+#     # {"mysql_table": "hourly_arcep_huawei_3g",                     **_HOURLY},
+#     # {"mysql_table": "hourly_arcep_huawei_4g",                     **_HOURLY},
+#    ## #── Ericsson ARCEP hourly ─────────────────────────────────
+#     {"mysql_table": "hourly_ericsson_arcep_2g_counters",          **_HOURLY_WITH_TIME_UPPERCASE},
+#     {"mysql_table": "hourly_ericsson_arcep_3g_counters",          **_HOURLY_WITH_TIME_UPPERCASE},
+#     {"mysql_table": "hourly_ericsson_arcep_4g_counters",          **_HOURLY_WITH_TIME_UPPERCASE},
+#     ##### ── Ericsson packet loss hourly ───────────────────────────
+#     {"mysql_table": "hourly_ericsson_packet_loss_bb_3g_counters", **_HOURLY_WITH_TIME_UPPERCASE},
+#     {"mysql_table": "hourly_ericsson_packet_loss_bb_4g_counters", **_HOURLY_WITH_TIME_UPPERCASE},
+#     {"mysql_table": "hourly_ericsson_packet_loss_du_3g_counters", **_HOURLY_WITH_TIME_UPPERCASE},
+#     {"mysql_table": "hourly_ericsson_packet_loss_du_4g_counters", **_HOURLY_WITH_TIME_UPPERCASE},
 
 #     #### ── huawei packet loss hourly ───────────────────────────
 #     {"mysql_table": "hourly_huawei_4g_packet_loss", **_HOURLY},
@@ -81,7 +81,7 @@ TABLES = [
 #    #### # ── EPT ───────────────────────────────────────────────────
 #     {"mysql_table": "ept_2g",                                     **_EPT},
 #     {"mysql_table": "ept_3g",                                     **_EPT},
-#     {"mysql_table": "ept_4g",                                     **_EPT},
-#     ####── example: table with no date column, no cleanup needed ─
-    # {"mysql_table": "ref_sites", "varchar_to_decimal": False, "auto_detect": False, "date_col": None, "cleanup": False},
+    {"mysql_table": "ept_4g",                                     **_EPT},
+    ####── example: table with no date column, no cleanup needed ─
+    ############{"mysql_table": "ref_sites", "varchar_to_decimal": False, "auto_detect": False, "date_col": None, "cleanup": False},
 ]

@@ -14,39 +14,65 @@ import os
 
 from config import (
     DB_CONFIG, MAX_DAYS_ALLOWED, MAX_SPECIFIC_DATES, MAX_COMPARE_DAYS,
-    DEFAULT_DAYS, KPI_CHART_GROUPS, CHART_COLORS, BATCHES
+    DEFAULT_DAYS, CHART_COLORS, TECHNOLOGIES
 )
 
 app = FastAPI(title="Cluster KPI Dashboard API")
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
-SQL_DIR = os.path.join(os.path.dirname(__file__), "SQL")
+SQL_DIR    = os.path.join(os.path.dirname(__file__), "SQL")
 
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
+
+# =============================================================================
+# HELPERS — CONFIG LOOKUP
+# =============================================================================
+
+def get_vendor_cfg(tech: str, vendor: str) -> dict:
+    """Return the vendor config dict or raise 400."""
+    tech_cfg = TECHNOLOGIES.get(tech)
+    if not tech_cfg:
+        raise HTTPException(status_code=400, detail=f"Unknown technology: '{tech}'")
+    vendor_cfg = tech_cfg["vendors"].get(vendor)
+    if not vendor_cfg:
+        raise HTTPException(status_code=400, detail=f"Unknown vendor: '{vendor}' for technology '{tech}'")
+    return vendor_cfg
+
+
+# =============================================================================
+# HELPERS — DB / SQL
+# =============================================================================
 
 def get_db_connection():
     return mysql.connector.connect(**DB_CONFIG)
 
 
-def load_sql_template() -> str:
-    path = os.path.join(SQL_DIR, "kpi_query.sql")
+def load_sql_template(vendor_cfg: dict) -> str:
+    path = os.path.join(SQL_DIR, vendor_cfg["sql_file"])
     if not os.path.exists(path):
         raise FileNotFoundError(f"SQL file not found: {path}")
     with open(path, "r", encoding="utf-8") as f:
         return f.read()
 
 
-def build_cell_filter(batch: str) -> str:
-    if batch not in BATCHES:
+def build_cell_filter(vendor_cfg: dict, batch: str) -> str:
+    batches = vendor_cfg.get("batches", {})
+    if batch not in batches:
         return ""
-    cells = BATCHES[batch]
-    quoted = ", ".join(f"'{c}'" for c in cells)
-    return f"AND h.CELL_NAME IN ({quoted})"
+    cells = batches[batch]["cells"]
+    if not cells:
+        return ""
+    cell_col = vendor_cfg["cell_col"]
+    quoted   = ", ".join(f"'{c}'" for c in cells)
+    return f"AND {cell_col} IN ({quoted})"
 
+
+# =============================================================================
+# HELPERS — VALIDATION
+# =============================================================================
 
 def validate_date_str(date_str: str):
-    """Parse and return a date object, raise HTTPException on bad format."""
     try:
         return datetime.strptime(date_str.strip(), "%Y-%m-%d").date()
     except ValueError:
@@ -55,7 +81,7 @@ def validate_date_str(date_str: str):
 
 def validate_date_range(start_date: str, end_date: str):
     start = validate_date_str(start_date)
-    end = validate_date_str(end_date)
+    end   = validate_date_str(end_date)
     if start > end:
         raise HTTPException(status_code=400, detail="Start date must be before end date")
     days_diff = (end - start).days + 1
@@ -68,7 +94,6 @@ def validate_date_range(start_date: str, end_date: str):
 
 
 def validate_specific_dates(dates_str: str, max_count: int):
-    """Parse comma-separated dates, validate each, return sorted list of date strings."""
     parts = [d.strip() for d in dates_str.split(",") if d.strip()]
     if len(parts) == 0:
         raise HTTPException(status_code=400, detail="No dates provided")
@@ -77,7 +102,7 @@ def validate_specific_dates(dates_str: str, max_count: int):
     validated = []
     for p in parts:
         validated.append(validate_date_str(p).strftime("%Y-%m-%d"))
-    return sorted(set(validated))  # deduplicate and sort
+    return sorted(set(validated))
 
 
 def serialize_rows(rows):
@@ -96,6 +121,10 @@ def serialize_rows(rows):
     return rows
 
 
+# =============================================================================
+# ROUTES
+# =============================================================================
+
 @app.get("/")
 async def root():
     return FileResponse(os.path.join(STATIC_DIR, "index.html"))
@@ -103,59 +132,95 @@ async def root():
 
 @app.get("/api/config")
 async def get_config():
-    return {
-        "kpi_groups": KPI_CHART_GROUPS,
-        "colors": CHART_COLORS,
-        "max_days": MAX_DAYS_ALLOWED,
-        "max_specific_dates": MAX_SPECIFIC_DATES,
-        "max_compare_days": MAX_COMPARE_DAYS,
-        "default_days": DEFAULT_DAYS,
-        "batches": {
-            "all":    {"label": "All Cells", "count": None,                      "cells": []},
-            "batch1": {"label": "Cluster 1", "count": len(BATCHES["batch1"]), "cells": BATCHES["batch1"]},
-            "batch2": {"label": "Cluster 2", "count": len(BATCHES["batch2"]), "cells": BATCHES["batch2"]},
+    technologies_out = {}
+    for tech_key, tech_cfg in TECHNOLOGIES.items():
+        vendors_out = {}
+        for vendor_key, vendor_cfg in tech_cfg["vendors"].items():
+            # Build batches — always include "all" first
+            batches_out = {
+                "all": {"label": "All Cells", "count": None, "cells": []}
+            }
+            for batch_key, batch_info in vendor_cfg["batches"].items():
+                batches_out[batch_key] = {
+                    "label": batch_info["label"],
+                    "count": len(batch_info["cells"]),
+                    "cells": batch_info["cells"],
+                }
+            vendors_out[vendor_key] = {
+                "label":      vendor_cfg["label"],
+                "kpi_groups": vendor_cfg["kpi_groups"],
+                "batches":    batches_out,
+            }
+        technologies_out[tech_key] = {
+            "label":   tech_cfg["label"],
+            "vendors": vendors_out,
         }
+
+    return {
+        "colors":             CHART_COLORS,
+        "max_days":           MAX_DAYS_ALLOWED,
+        "max_specific_dates": MAX_SPECIFIC_DATES,
+        "max_compare_days":   MAX_COMPARE_DAYS,
+        "default_days":       DEFAULT_DAYS,
+        "technologies":       technologies_out,
     }
 
 
 @app.get("/api/kpi-data")
 async def get_kpi_data(
-    view:       str           = Query("hourly", description="hourly or daily"),
-    batch:      str           = Query("all",    description="all | batch1 | batch2"),
-    start_date: Optional[str] = Query(None,     description="Start date YYYY-MM-DD (range mode)"),
-    end_date:   Optional[str] = Query(None,     description="End date YYYY-MM-DD (range mode)"),
-    dates:      Optional[str] = Query(None,     description="Comma-separated specific dates YYYY-MM-DD")
+    tech:       str           = Query("2g",     description="2g | 3g | 4g"),
+    vendor:     str           = Query("ericsson", description="ericsson | huawei"),
+    view:       str           = Query("hourly",  description="hourly | daily"),
+    batch:      str           = Query("all",     description="all | <batch_key>"),
+    start_date: Optional[str] = Query(None,      description="Start date YYYY-MM-DD (range mode)"),
+    end_date:   Optional[str] = Query(None,      description="End date YYYY-MM-DD (range mode)"),
+    dates:      Optional[str] = Query(None,      description="Comma-separated specific dates YYYY-MM-DD")
 ):
+    # --- Validate tech + vendor ---
+    vendor_cfg = get_vendor_cfg(tech, vendor)
+
+    # --- Validate view ---
     if view not in ("hourly", "daily"):
         view = "hourly"
-    if batch not in ("all", "batch1", "batch2"):
+
+    # --- Validate batch ---
+    valid_batches = {"all"} | set(vendor_cfg["batches"].keys())
+    if batch not in valid_batches:
         batch = "all"
 
     # --- Build date_filter ---
+    date_col = vendor_cfg["date_col"]
+
     if dates:
-        # Specific dates mode (used by compare mode and specific-dates picker)
-        date_list = validate_specific_dates(dates, MAX_COMPARE_DAYS if view == "hourly" else MAX_SPECIFIC_DATES)
-        quoted = ", ".join(f"'{d}'" for d in date_list)
-        date_filter = f"h.date IN ({quoted})"
-        meta = {"dates": date_list}
+        date_list = validate_specific_dates(
+            dates,
+            MAX_COMPARE_DAYS if view == "hourly" else MAX_SPECIFIC_DATES
+        )
+        quoted      = ", ".join(f"'{d}'" for d in date_list)
+        date_filter = f"{date_col} IN ({quoted})"
+        meta        = {"dates": date_list}
     elif start_date and end_date:
-        start, end = validate_date_range(start_date, end_date)
-        date_filter = f"h.date BETWEEN '{start.strftime('%Y-%m-%d')}' AND '{end.strftime('%Y-%m-%d')}'"
-        meta = {"start_date": start_date, "end_date": end_date}
+        start, end  = validate_date_range(start_date, end_date)
+        date_filter = f"{date_col} BETWEEN '{start.strftime('%Y-%m-%d')}' AND '{end.strftime('%Y-%m-%d')}'"
+        meta        = {"start_date": start_date, "end_date": end_date}
     else:
         raise HTTPException(status_code=400, detail="Provide either 'dates' or both 'start_date' and 'end_date'")
 
-    try:
-        sql_template = load_sql_template()
-        cell_filter  = build_cell_filter(batch)
-        time_select  = ",\n    h.time" if view == "hourly" else ""
-        time_group   = ",\n    h.time" if view == "hourly" else ""
+    # --- Build time placeholders ---
+    time_col    = vendor_cfg["time_col"]
+    time_select = f",\n    {time_col} AS time" if view == "hourly" else ""
+    time_group  = f",\n    {time_col}"         if view == "hourly" else ""
 
-        sql_query = sql_template.format(
+    # --- Build cell filter ---
+    cell_filter = build_cell_filter(vendor_cfg, batch)
+
+    try:
+        sql_template = load_sql_template(vendor_cfg)
+        sql_query    = sql_template.format(
             date_filter=date_filter,
             cell_filter=cell_filter,
             time_select=time_select,
-            time_group=time_group
+            time_group=time_group,
         )
 
         print(sql_query)
@@ -169,8 +234,16 @@ async def get_kpi_data(
 
         rows = serialize_rows(rows)
 
-        return {"success": True, "data": rows, "batch": batch, "view": view,
-                "total_records": len(rows), **meta}
+        return {
+            "success":       True,
+            "data":          rows,
+            "tech":          tech,
+            "vendor":        vendor,
+            "batch":         batch,
+            "view":          view,
+            "total_records": len(rows),
+            **meta
+        }
 
     except FileNotFoundError as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -180,18 +253,22 @@ async def get_kpi_data(
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 
-@app.get("/api/cluster-cells/{batch}/download")
-async def download_cluster_cells(batch: str):
-    """Download the cell list for a given cluster as an XLSX file."""
-    if batch not in BATCHES:
-        raise HTTPException(status_code=404, detail="Cluster not found")
+@app.get("/api/cluster-cells/{tech}/{vendor}/{batch}/download")
+async def download_cluster_cells(tech: str, vendor: str, batch: str):
+    """Download the cell list for a given tech/vendor/batch as an XLSX file."""
+    vendor_cfg = get_vendor_cfg(tech, vendor)
 
-    cells = BATCHES[batch]
-    label = "Cluster_1" if batch == "batch1" else "Cluster_2"
+    batches = vendor_cfg["batches"]
+    if batch not in batches:
+        raise HTTPException(status_code=404, detail=f"Batch '{batch}' not found")
+
+    batch_info = batches[batch]
+    cells      = batch_info["cells"]
+    label      = batch_info["label"].replace(" ", "_")
 
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = label
+    ws.title = label[:31]
     ws.column_dimensions["A"].width = 20
     ws.append(["Cell Name"])
     for cell in cells:
@@ -201,10 +278,11 @@ async def download_cluster_cells(batch: str):
     wb.save(buf)
     buf.seek(0)
 
+    filename = f"{tech}_{vendor}_{label}_cells.xlsx"
     return StreamingResponse(
         buf,
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={label}_cells.xlsx"}
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
     )
 
 
@@ -213,8 +291,8 @@ async def get_default_dates():
     today = datetime.now().date()
     start = today - timedelta(days=DEFAULT_DAYS - 1)
     return {
-        "start_date": start.strftime("%Y-%m-%d"),
-        "end_date":   today.strftime("%Y-%m-%d"),
+        "start_date":   start.strftime("%Y-%m-%d"),
+        "end_date":     today.strftime("%Y-%m-%d"),
         "default_days": DEFAULT_DAYS
     }
 

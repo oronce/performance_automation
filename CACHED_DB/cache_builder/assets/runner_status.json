@@ -1,0 +1,10 @@
+{
+  "step": "step3",
+  "label": "STEP 3 \u2014 Load data MySQL \u2192 DuckDB",
+  "status": "done",
+  "start_time": "2026-03-23T10:09:56",
+  "end_time": "2026-03-23T10:09:57",
+  "message": null,
+  "error": null,
+  "updated_at": "2026-03-23T10:09:57"
+}
