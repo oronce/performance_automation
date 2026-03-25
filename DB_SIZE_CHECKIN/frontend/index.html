@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DB Size Monitor</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:        #0b0e1a;
+    --surface:   #131829;
+    --surface2:  #1a1f35;
+    --border:    #252c47;
+    --accent:    #4f7cf7;
+    --accent2:   #7c4dff;
+    --green:     #00e676;
+    --red:       #ff4444;
+    --orange:    #ffab40;
+    --text:      #e8eaf6;
+    --muted:     #636b8a;
+    --glow:      rgba(79,124,247,.18);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { font-size: 14px; }
+  body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; min-height: 100vh; }
+
+  /* ── header ── */
+  header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 28px;
+    display: flex; align-items: center; justify-content: space-between;
+    position: sticky; top: 0; z-index: 100;
+    backdrop-filter: blur(8px);
+  }
+  .logo { display: flex; align-items: center; gap: 10px; }
+  .logo-icon {
+    width: 36px; height: 36px; border-radius: 8px;
+    background: linear-gradient(135deg, var(--accent), var(--accent2));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+  }
+  .logo h1 { font-size: 1.1rem; font-weight: 700; letter-spacing: .3px; }
+  .logo small { font-size: .72rem; color: var(--muted); display: block; margin-top: 1px; }
+
+  .header-right { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .status-pill {
+    display: flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border-radius: 20px;
+    background: var(--surface2); border: 1px solid var(--border);
+    font-size: .75rem; color: var(--muted);
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+  .dot.green  { background: var(--green);  box-shadow: 0 0 6px var(--green); }
+  .dot.red    { background: var(--red);    box-shadow: 0 0 6px var(--red); }
+  .dot.orange { background: var(--orange); box-shadow: 0 0 6px var(--orange); }
+
+  .btn {
+    padding: 7px 16px; border-radius: 8px; border: 1px solid var(--accent);
+    background: transparent; color: var(--accent); cursor: pointer;
+    font-size: .8rem; font-weight: 600; transition: all .2s;
+  }
+  .btn:hover { background: var(--accent); color: #fff; box-shadow: 0 0 14px var(--glow); }
+  .btn:disabled { opacity: .4; cursor: not-allowed; }
+
+  /* ── layout ── */
+  main { padding: 24px 28px; max-width: 1600px; margin: 0 auto; }
+  section { margin-bottom: 24px; }
+
+  .section-title {
+    font-size: .8rem; font-weight: 700; letter-spacing: 1.2px;
+    color: var(--muted); text-transform: uppercase; margin-bottom: 14px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .section-title::after {
+    content: ''; flex: 1; height: 1px; background: var(--border);
+  }
+
+  /* ── cards ── */
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px 22px;
+  }
+  .card.glow-accent { box-shadow: 0 0 0 1px var(--accent), 0 4px 24px rgba(79,124,247,.12); }
+
+  /* ── KPI grid ── */
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+  .kpi-card {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; position: relative; overflow: hidden;
+    transition: transform .2s, box-shadow .2s;
+  }
+  .kpi-card:hover { transform: translateY(-2px); box-shadow: 0 8px 28px rgba(0,0,0,.3); }
+  .kpi-card .bar {
+    position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    border-radius: 12px 12px 0 0;
+  }
+  .kpi-card .label { font-size: .72rem; color: var(--muted); text-transform: uppercase; letter-spacing: .8px; margin-bottom: 8px; }
+  .kpi-card .value { font-size: 2rem; font-weight: 800; line-height: 1; letter-spacing: -1px; }
+  .kpi-card .sub   { font-size: .78rem; color: var(--muted); margin-top: 6px; }
+  .kpi-card .badge {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 2px 8px; border-radius: 6px; font-size: .72rem; font-weight: 700; margin-top: 10px;
+  }
+  .badge.up   { background: rgba(255,68,68,.15);  color: var(--red); }
+  .badge.down { background: rgba(0,230,118,.15);  color: var(--green); }
+  .badge.flat { background: rgba(99,107,138,.15); color: var(--muted); }
+  .badge.new_ { background: rgba(255,171,64,.15); color: var(--orange); }
+
+  /* ── charts ── */
+  .charts-row { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; }
+  .chart-wrap { position: relative; height: 280px; }
+
+  /* ── top growth list ── */
+  .growth-list { display: flex; flex-direction: column; gap: 8px; }
+  .growth-row {
+    display: grid; grid-template-columns: 1fr auto auto auto;
+    gap: 12px; align-items: center;
+    padding: 9px 14px; border-radius: 8px; background: var(--surface2);
+    border: 1px solid var(--border); transition: background .15s;
+  }
+  .growth-row:hover { background: #1f2540; }
+  .growth-row .tname { font-size: .82rem; font-weight: 600; }
+  .growth-row .tname small { display: block; font-size: .68rem; color: var(--muted); font-weight: 400; }
+  .growth-row .sz, .growth-row .grow { font-size: .82rem; text-align: right; white-space: nowrap; }
+  .growth-row .bar-track {
+    height: 4px; border-radius: 4px; background: var(--border);
+    overflow: hidden; min-width: 60px;
+  }
+  .growth-row .bar-fill { height: 100%; border-radius: 4px; transition: width .6s; }
+
+  /* ── full table ── */
+  .db-tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+  .tab-btn {
+    padding: 6px 16px; border-radius: 8px; border: 1px solid var(--border);
+    background: transparent; color: var(--muted); cursor: pointer;
+    font-size: .8rem; font-weight: 600; transition: all .2s;
+  }
+  .tab-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+  .search-box {
+    width: 100%; padding: 9px 14px; border-radius: 8px;
+    background: var(--surface2); border: 1px solid var(--border);
+    color: var(--text); font-size: .82rem; margin-bottom: 14px; outline: none;
+    transition: border-color .2s;
+  }
+  .search-box:focus { border-color: var(--accent); }
+
+  table { width: 100%; border-collapse: collapse; font-size: .8rem; }
+  thead th {
+    padding: 8px 12px; text-align: left;
+    color: var(--muted); font-size: .7rem; letter-spacing: .8px; text-transform: uppercase;
+    border-bottom: 1px solid var(--border); cursor: pointer; white-space: nowrap;
+    user-select: none;
+  }
+  thead th:hover { color: var(--text); }
+  thead th .sort-arrow { margin-left: 4px; opacity: .4; }
+  thead th.sorted .sort-arrow { opacity: 1; color: var(--accent); }
+  tbody tr { border-bottom: 1px solid rgba(37,44,71,.5); transition: background .12s; }
+  tbody tr:hover { background: var(--surface2); }
+  tbody td { padding: 9px 12px; vertical-align: middle; }
+  .db-badge {
+    display: inline-block; padding: 2px 8px; border-radius: 5px;
+    font-size: .68rem; font-weight: 700; letter-spacing: .5px;
+  }
+  .size-bar {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .size-bar-track {
+    width: 60px; height: 4px; border-radius: 4px; background: var(--border); flex-shrink: 0;
+  }
+  .size-bar-fill { height: 100%; border-radius: 4px; background: var(--accent); }
+  .growth-pos { color: var(--red); font-weight: 600; }
+  .growth-neg { color: var(--green); }
+  .growth-zero { color: var(--muted); }
+
+  /* ── refresh bar ── */
+  #refresh-bar {
+    position: fixed; bottom: 0; left: 0; right: 0; height: 2px;
+    background: var(--border); z-index: 200;
+  }
+  #refresh-progress {
+    height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2));
+    width: 0%; transition: width .5s linear;
+  }
+
+  /* ── loading ── */
+  .spinner {
+    display: inline-block; width: 16px; height: 16px;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin .6s linear infinite; vertical-align: middle;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .empty { text-align: center; padding: 40px; color: var(--muted); font-size: .9rem; }
+
+  /* scrollbar */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  @media (max-width: 900px) {
+    .charts-row { grid-template-columns: 1fr; }
+    header { flex-direction: column; gap: 12px; align-items: flex-start; }
+    main { padding: 16px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">🗄</div>
+    <div>
+      <h1>DB Size Monitor</h1>
+      <small>performanceroute &amp; prismis · 10.22.33.116</small>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="status-pill"><div class="dot" id="conn-dot"></div><span id="conn-text">Connecting…</span></div>
+    <div class="status-pill">🕐 Last check: <span id="last-check-time" style="color:var(--text);margin-left:4px">—</span></div>
+    <div class="status-pill">⏭ Next: <span id="next-check-time" style="color:var(--accent);margin-left:4px">—</span></div>
+    <button class="btn" id="check-btn" onclick="triggerCheck()">▶ Run Now</button>
+  </div>
+</header>
+
+<main>
+  <!-- KPI cards -->
+  <section>
+    <div class="section-title">Database Overview</div>
+    <div class="kpi-grid" id="kpi-grid">
+      <div class="card"><div class="empty"><span class="spinner"></span> Loading…</div></div>
+    </div>
+  </section>
+
+  <!-- Charts -->
+  <section>
+    <div class="section-title">Size History</div>
+    <div class="charts-row">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+          <span style="font-weight:700;font-size:.9rem;">Total Size Over Time (MB)</span>
+        </div>
+        <div class="chart-wrap"><canvas id="historyChart"></canvas></div>
+      </div>
+      <div class="card">
+        <div style="font-weight:700;font-size:.9rem;margin-bottom:14px;">Current Distribution</div>
+        <div class="chart-wrap"><canvas id="distChart"></canvas></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Top growth -->
+  <section>
+    <div class="section-title">Top Growing Tables (since last check)</div>
+    <div class="card">
+      <div class="growth-list" id="growth-list">
+        <div class="empty"><span class="spinner"></span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Full table list -->
+  <section>
+    <div class="section-title">All Tables</div>
+    <div class="card">
+      <div class="db-tabs" id="db-tabs"></div>
+      <input class="search-box" type="text" placeholder="🔍  Search table name…" id="search-input" oninput="filterTable()">
+      <div id="table-container">
+        <div class="empty"><span class="spinner"></span></div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div id="refresh-bar"><div id="refresh-progress"></div></div>
+
+<script>
+const API = '';  // same origin
+const REFRESH_INTERVAL = 60;  // seconds
+
+let allTables = [];
+let activeDb = 'ALL';
+let sortKey = 'size_mb';
+let sortAsc = false;
+let historyChart = null;
+let distChart = null;
+let refreshTimer = null;
+let countdown = REFRESH_INTERVAL;
+
+// ── colour helpers ────────────────────────────────────────
+const DB_COLORS = {
+  performanceroute: { bar: '#4f7cf7', badge: 'rgba(79,124,247,.18)', text: '#4f7cf7' },
+  prismis:          { bar: '#7c4dff', badge: 'rgba(124,77,255,.18)',  text: '#7c4dff' },
+};
+const FALLBACK_COLOR = { bar: '#636b8a', badge: 'rgba(99,107,138,.18)', text: '#636b8a' };
+function dbColor(name) { return DB_COLORS[name] || FALLBACK_COLOR; }
+
+function fmtMb(mb) {
+  if (mb >= 1024) return (mb / 1024).toFixed(2) + ' GB';
+  if (mb >= 1)    return mb.toFixed(2) + ' MB';
+  return (mb * 1024).toFixed(1) + ' KB';
+}
+function fmtNum(n) {
+  if (!n) return '0';
+  if (n >= 1e9) return (n/1e9).toFixed(1)+'B';
+  if (n >= 1e6) return (n/1e6).toFixed(1)+'M';
+  if (n >= 1e3) return (n/1e3).toFixed(1)+'K';
+  return n;
+}
+function fmtTs(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleString('en-GB', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'});
+}
+function growthBadge(mb, pct, isNew) {
+  if (isNew) return `<span class="badge new_">NEW</span>`;
+  if (Math.abs(mb) < 0.0001) return `<span class="badge flat">— stable</span>`;
+  const sign = mb > 0 ? '+' : '';
+  const cls  = mb > 0 ? 'up' : 'down';
+  const arrow= mb > 0 ? '↑' : '↓';
+  return `<span class="badge ${cls}">${arrow} ${sign}${fmtMb(Math.abs(mb))} (${sign}${pct.toFixed(2)}%)</span>`;
+}
+function growthClass(mb) {
+  if (mb > 0.001)  return 'growth-pos';
+  if (mb < -0.001) return 'growth-neg';
+  return 'growth-zero';
+}
+
+// ── status & daemon ───────────────────────────────────────
+async function loadStatus() {
+  try {
+    const r = await fetch(API + '/api/status');
+    const d = await r.json();
+    const dot  = document.getElementById('conn-dot');
+    const txt  = document.getElementById('conn-text');
+    const last = document.getElementById('last-check-time');
+    const next = document.getElementById('next-check-time');
+
+    if (d.last_error) {
+      dot.className = 'dot red'; txt.textContent = 'Error';
+    } else if (d.last_run) {
+      dot.className = 'dot green'; txt.textContent = 'Connected';
+    } else {
+      dot.className = 'dot orange'; txt.textContent = 'Waiting';
+    }
+    last.textContent = fmtTs(d.last_run);
+    if (d.next_run) {
+      const n = new Date(d.next_run);
+      next.textContent = n.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+    }
+  } catch(e) {
+    document.getElementById('conn-dot').className = 'dot red';
+    document.getElementById('conn-text').textContent = 'Offline';
+  }
+}
+
+// ── summary KPI cards ─────────────────────────────────────
+async function loadSummary() {
+  const r = await fetch(API + '/api/summary');
+  const d = await r.json();
+  const grid = document.getElementById('kpi-grid');
+
+  if (!d.databases || d.databases.length === 0) {
+    grid.innerHTML = '<div class="empty">No data yet — run first check</div>';
+    return;
+  }
+
+  // Compute totals
+  const totalMb    = d.databases.reduce((s, x) => s + x.total_mb, 0);
+  const totalTbl   = d.databases.reduce((s, x) => s + x.table_count, 0);
+  const totalRows  = d.databases.reduce((s, x) => s + (x.total_rows||0), 0);
+  const totalGrowth= d.databases.reduce((s, x) => s + x.growth_mb, 0);
+
+  let html = '';
+
+  // One card per DB
+  d.databases.forEach(db => {
+    const c   = dbColor(db.db_name);
+    const gbStr = db.total_gb >= 1 ? db.total_gb.toFixed(2) + ' GB' : db.total_mb.toFixed(0) + ' MB';
+    html += `
+      <div class="kpi-card">
+        <div class="bar" style="background:linear-gradient(90deg,${c.bar},${c.text}88)"></div>
+        <div class="label">🗄 ${db.db_name}</div>
+        <div class="value" style="color:${c.text}">${gbStr}</div>
+        <div class="sub">${db.table_count} tables · ${fmtNum(db.total_rows)} rows</div>
+        ${growthBadge(db.growth_mb, db.growth_pct, false)}
+      </div>`;
+  });
+
+  // Summary cards
+  const totalGrowthSign = totalGrowth > 0.001 ? '+' : '';
+  const totalGrowthColor= totalGrowth > 1 ? 'var(--red)' : totalGrowth > 0 ? 'var(--orange)' : 'var(--green)';
+  html += `
+    <div class="kpi-card">
+      <div class="bar" style="background:linear-gradient(90deg,#00e676,#00bcd4)"></div>
+      <div class="label">📊 Total Size</div>
+      <div class="value" style="color:var(--green)">${totalMb >= 1024 ? (totalMb/1024).toFixed(2)+' GB' : totalMb.toFixed(0)+' MB'}</div>
+      <div class="sub">Across all databases</div>
+    </div>
+    <div class="kpi-card">
+      <div class="bar" style="background:linear-gradient(90deg,#ff4444,#ff9800)"></div>
+      <div class="label">📈 Growth Since Last Check</div>
+      <div class="value" style="color:${totalGrowthColor}">${totalGrowthSign}${fmtMb(Math.abs(totalGrowth))}</div>
+      <div class="sub">${d.prev_check ? 'vs ' + fmtTs(d.prev_check) : 'No previous snapshot'}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="bar" style="background:linear-gradient(90deg,#7c4dff,#4f7cf7)"></div>
+      <div class="label">🗂 Total Tables</div>
+      <div class="value" style="color:#a78bfa">${totalTbl}</div>
+      <div class="sub">${fmtNum(totalRows)} total rows</div>
+    </div>`;
+
+  grid.innerHTML = html;
+}
+
+// ── history chart ─────────────────────────────────────────
+async function loadHistory() {
+  const r = await fetch(API + '/api/history');
+  const d = await r.json();
+  const ctx = document.getElementById('historyChart').getContext('2d');
+
+  const datasets = Object.entries(d.history).map(([db, h]) => {
+    const c = dbColor(db);
+    return {
+      label: db, data: h.data,
+      borderColor: c.bar, backgroundColor: c.bar + '22',
+      borderWidth: 2, pointRadius: 3, fill: true, tension: .35,
+    };
+  });
+
+  const labels = Object.values(d.history)[0]?.labels || [];
+
+  if (historyChart) historyChart.destroy();
+  historyChart = new Chart(ctx, {
+    type: 'line',
+    data: { labels, datasets },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#636b8a', boxWidth: 12, font: { size: 11 } } },
+        tooltip: { backgroundColor: '#1a1f35', borderColor: '#252c47', borderWidth: 1,
+          callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmtMb(ctx.parsed.y)}` } }
+      },
+      scales: {
+        x: { ticks: { color: '#636b8a', maxTicksLimit: 10, font:{size:10} }, grid: { color: '#252c47' } },
+        y: { ticks: { color: '#636b8a', font:{size:10}, callback: v => fmtMb(v) }, grid: { color: '#252c47' } }
+      }
+    }
+  });
+}
+
+// ── dist chart (top tables donut) ─────────────────────────
+async function loadDistChart(tables) {
+  if (!tables || tables.length === 0) return;
+  const top = tables.slice(0, 10);
+  const ctx = document.getElementById('distChart').getContext('2d');
+
+  const colors = ['#4f7cf7','#7c4dff','#00e676','#ff4444','#ffab40','#00bcd4','#e91e63','#8bc34a','#ff7043','#9c27b0'];
+
+  if (distChart) distChart.destroy();
+  distChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: top.map(t => t.table_name),
+      datasets: [{ data: top.map(t => t.size_mb), backgroundColor: colors, borderWidth: 0 }]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'right', labels: { color:'#636b8a', font:{size:10}, boxWidth:10, padding:6 } },
+        tooltip: { backgroundColor:'#1a1f35', borderColor:'#252c47', borderWidth:1,
+          callbacks: { label: ctx => ` ${fmtMb(ctx.parsed)}` } }
+      },
+      cutout: '65%',
+    }
+  });
+}
+
+// ── top growth ────────────────────────────────────────────
+async function loadGrowth() {
+  const r = await fetch(API + '/api/top-growth?limit=15');
+  const d = await r.json();
+  const el = document.getElementById('growth-list');
+
+  if (!d.tables || d.tables.length === 0) {
+    el.innerHTML = '<div class="empty">Need at least 2 snapshots to show growth</div>';
+    return;
+  }
+
+  const maxGrow = Math.max(...d.tables.map(t => Math.abs(t.growth_mb)), 0.001);
+  const c = dbColor;
+
+  el.innerHTML = d.tables.map(t => {
+    const col = t.growth_mb > 0 ? 'var(--red)' : t.growth_mb < 0 ? 'var(--green)' : 'var(--muted)';
+    const pct = Math.min((Math.abs(t.growth_mb) / maxGrow) * 100, 100);
+    const sign = t.growth_mb > 0 ? '+' : '';
+    return `
+      <div class="growth-row">
+        <div class="tname">
+          ${t.table_name}
+          <small><span class="db-badge" style="background:${c(t.db_name).badge};color:${c(t.db_name).text}">${t.db_name}</span></small>
+        </div>
+        <div class="sz" style="color:var(--muted)">${fmtMb(t.current_mb)}</div>
+        <div class="grow" style="color:${col}">${sign}${fmtMb(Math.abs(t.growth_mb))}</div>
+        <div class="bar-track" style="min-width:80px">
+          <div class="bar-fill" style="width:${pct}%;background:${col}"></div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// ── full table list ───────────────────────────────────────
+async function loadTables() {
+  const r = await fetch(API + '/api/tables');
+  const d = await r.json();
+  allTables = d.tables || [];
+
+  // Build tabs
+  const dbs = ['ALL', ...new Set(allTables.map(t => t.db_name))];
+  const tabsEl = document.getElementById('db-tabs');
+  tabsEl.innerHTML = dbs.map(db =>
+    `<button class="tab-btn ${db === activeDb ? 'active' : ''}" onclick="setDb('${db}')">${db}</button>`
+  ).join('');
+
+  renderTable();
+  loadDistChart(allTables);
+}
+
+function setDb(db) {
+  activeDb = db;
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.textContent === db));
+  renderTable();
+}
+
+function filterTable() { renderTable(); }
+
+function renderTable() {
+  const search = document.getElementById('search-input').value.toLowerCase();
+  let data = allTables
+    .filter(t => activeDb === 'ALL' || t.db_name === activeDb)
+    .filter(t => !search || t.table_name.toLowerCase().includes(search) || t.db_name.toLowerCase().includes(search));
+
+  data.sort((a, b) => {
+    const av = a[sortKey], bv = b[sortKey];
+    return sortAsc ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1);
+  });
+
+  const maxMb = Math.max(...data.map(t => t.size_mb), 0.001);
+
+  const cols = [
+    { key: 'db_name',    label: 'Database' },
+    { key: 'table_name', label: 'Table' },
+    { key: 'size_mb',    label: 'Size' },
+    { key: 'row_count',  label: 'Rows' },
+    { key: 'growth_mb',  label: 'Growth' },
+    { key: 'growth_pct', label: 'Growth %' },
+  ];
+
+  const thead = cols.map(col => {
+    const isSorted = sortKey === col.key;
+    const arrow = isSorted ? (sortAsc ? '▲' : '▼') : '⇅';
+    return `<th class="${isSorted?'sorted':''}" onclick="sortBy('${col.key}')">${col.label} <span class="sort-arrow">${arrow}</span></th>`;
+  }).join('');
+
+  const tbody = data.map(t => {
+    const c = dbColor(t.db_name);
+    const barPct = Math.min((t.size_mb / maxMb) * 100, 100);
+    const growthStr = t.is_new
+      ? '<span class="badge new_">NEW</span>'
+      : t.growth_mb === 0
+        ? '<span class="growth-zero">—</span>'
+        : `<span class="${growthClass(t.growth_mb)}">${t.growth_mb > 0 ? '+' : ''}${fmtMb(Math.abs(t.growth_mb))}</span>`;
+    const pctStr = t.is_new ? '' : t.growth_pct === 0 ? '' : `<span class="${growthClass(t.growth_mb)}">${t.growth_pct > 0?'+':''}${t.growth_pct.toFixed(2)}%</span>`;
+
+    return `<tr>
+      <td><span class="db-badge" style="background:${c.badge};color:${c.text}">${t.db_name}</span></td>
+      <td><strong>${t.table_name}</strong></td>
+      <td>
+        <div class="size-bar">
+          <span>${fmtMb(t.size_mb)}</span>
+          <div class="size-bar-track"><div class="size-bar-fill" style="width:${barPct}%;background:${c.bar}"></div></div>
+        </div>
+      </td>
+      <td>${fmtNum(t.row_count)}</td>
+      <td>${growthStr}</td>
+      <td>${pctStr}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('table-container').innerHTML = data.length === 0
+    ? '<div class="empty">No tables found</div>'
+    : `<table><thead><tr>${thead}</tr></thead><tbody>${tbody}</tbody></table>`;
+}
+
+function sortBy(key) {
+  if (sortKey === key) sortAsc = !sortAsc;
+  else { sortKey = key; sortAsc = false; }
+  renderTable();
+}
+
+// ── manual trigger ────────────────────────────────────────
+async function triggerCheck() {
+  const btn = document.getElementById('check-btn');
+  btn.disabled = true; btn.textContent = '⏳ Running…';
+  try {
+    const r = await fetch(API + '/api/trigger');
+    const d = await r.json();
+    if (d.ok) { btn.textContent = '✓ Done'; await loadAll(); }
+    else { btn.textContent = '✗ Error'; }
+  } catch(e) { btn.textContent = '✗ Error'; }
+  setTimeout(() => { btn.disabled = false; btn.textContent = '▶ Run Now'; }, 3000);
+}
+
+// ── refresh countdown bar ─────────────────────────────────
+function startCountdown() {
+  countdown = REFRESH_INTERVAL;
+  clearInterval(refreshTimer);
+  refreshTimer = setInterval(() => {
+    countdown--;
+    const pct = ((REFRESH_INTERVAL - countdown) / REFRESH_INTERVAL) * 100;
+    document.getElementById('refresh-progress').style.width = pct + '%';
+    if (countdown <= 0) {
+      document.getElementById('refresh-progress').style.width = '0%';
+      countdown = REFRESH_INTERVAL;
+      loadAll();
+    }
+  }, 1000);
+}
+
+// ── load all ──────────────────────────────────────────────
+async function loadAll() {
+  await Promise.all([
+    loadStatus(),
+    loadSummary(),
+    loadHistory(),
+    loadGrowth(),
+    loadTables(),
+  ]);
+  startCountdown();
+}
+
+loadAll();
+</script>
+</body>
+</html>

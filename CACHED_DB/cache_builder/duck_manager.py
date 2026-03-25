@@ -198,6 +198,11 @@ def load_table(table_config: dict, start_date: str, end_date: str, duckdb_path: 
         logger.info("load_table [%s] inserted %d rows", table_name, total_rows)
         print(f"  Inserted {total_rows:,} rows into DuckDB")
 
+        # ── step 8b : CHECKPOINT to flush WAL and free dead rows ─
+        t0 = _time.perf_counter()
+        duck_con.execute("CHECKPOINT")
+        print(f"  step 8b CHECKPOINT             : {_time.perf_counter()-t0:.3f}s")
+
     finally:
         # ── step 9 : close / flush + delete temp CSV ─────────
         t0 = _time.perf_counter()

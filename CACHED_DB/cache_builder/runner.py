@@ -167,12 +167,21 @@ def step3_load(tables: list = TABLES, start_date: str = None, end_date: str = No
 
 
 def run_cleanup(tables: list = TABLES, max_days: int = 30) -> None:
-    """Remove rows older than max_days from all DuckDB tables."""
+    """Remove rows older than max_days from all DuckDB tables, then VACUUM + CHECKPOINT."""
+    import duckdb as _duckdb
     print(f"\n{DIVIDER}")
     logger.info("CLEANUP start: max_days=%d", max_days)
     print(f"  CLEANUP — Removing rows older than {max_days} days from DuckDB")
     print(DIVIDER)
     cleanup_old_data(tables, max_days=max_days, duckdb_path=DUCKDB_PATH)
+
+    print("  Running VACUUM + CHECKPOINT to reclaim disk space ...")
+    con = _duckdb.connect(DUCKDB_PATH)
+    try:
+        con.execute("VACUUM")
+        con.execute("CHECKPOINT")
+    finally:
+        con.close()
     print("\n  Cleanup done.")
 
 
