@@ -219,7 +219,7 @@ async def get_kpi_data(
         sql_query    = sql_template.format(
             date_filter=date_filter,
             cell_filter=cell_filter,
-            time_select=time_select,
+            time_select=time_select,    
             time_group=time_group,
         )
 

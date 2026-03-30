@@ -43,11 +43,25 @@ _WORST_CELL_SCRIPT_CONFIG = {
         "controller_col": "e.controller_name",
         "vendor":         "ERICSSON",
     },
+    # Failure breakdown scripts — network level only (aggregation_level must be None)
+    # Template only uses {start_date}, {end_date}, {time_filter}
+    "2g_huawei_failure_breakdown": {
+        "main_alias":     "h",
+        "cell_col":       "h.cell_name",
+        "controller_col": "h.controller_name",
+        "vendor":         "HUAWEI",
+    },
+    "2g_ericsson_failure_breakdown": {
+        "main_alias":     "e",
+        "cell_col":       "e.CELL_NAME",
+        "controller_col": "e.controller_name",
+        "vendor":         "ERICSSON",
+    },
 }
 
 _VALID_WORST_CELL_LEVELS = (
-    None, "cell_name", "site_name", "commune",
-    "arrondissement", "departement", "controller_name",
+    None, "cell_name", "site_name", "arrondissement","commune",
+     "departement", "controller_name",
 )
 
 
@@ -117,6 +131,7 @@ def generate_worst_cell_sql(
             f"    ept.DEPARTEMENT AS departement,\n"
             f"    ept.LONGITUDE AS longitude,\n"
             f"    ept.LATITUDE AS latitude,\n"
+            f"    ept.AZIMUTH AS azimuth,\n"
         )
         outer_select_geo = (
             "    cell_name,\n"
@@ -127,11 +142,12 @@ def generate_worst_cell_sql(
             "    departement,\n"
             "    longitude,\n"
             "    latitude,\n"
+            "    azimuth,\n"
         )
         group_by = (
             f"GROUP BY {cell_col}, {ctrl_col},\n"
             f"         ept.SITE_NAME, ept.ARRONDISSEMENT, ept.COMMUNE,\n"
-            f"         ept.DEPARTEMENT, ept.LONGITUDE, ept.LATITUDE"
+            f"         ept.DEPARTEMENT, ept.LONGITUDE, ept.LATITUDE, ept.AZIMUTH"
         )
         order_by = "ORDER BY CSR_FAILURES DESC"
 
@@ -163,27 +179,27 @@ def generate_worst_cell_sql(
     elif aggregation_level == "commune":
         select_geo = (
             "    ept.COMMUNE AS commune,\n"
-            "    ept.ARRONDISSEMENT AS arrondissement,\n"
             "    ept.DEPARTEMENT AS departement,\n"
         )
         outer_select_geo = (
             "    commune,\n"
-            "    arrondissement,\n"
             "    departement,\n"
         )
-        group_by = "GROUP BY ept.COMMUNE, ept.ARRONDISSEMENT, ept.DEPARTEMENT"
+        group_by = "GROUP BY ept.COMMUNE, ept.DEPARTEMENT"
         order_by = "ORDER BY CSR_FAILURES DESC"
 
     elif aggregation_level == "arrondissement":
         select_geo = (
             "    ept.ARRONDISSEMENT AS arrondissement,\n"
+            "    ept.COMMUNE AS commune,\n"
             "    ept.DEPARTEMENT AS departement,\n"
         )
         outer_select_geo = (
             "    arrondissement,\n"
+            "    commune,\n"
             "    departement,\n"
         )
-        group_by = "GROUP BY ept.ARRONDISSEMENT, ept.DEPARTEMENT"
+        group_by = "GROUP BY ept.ARRONDISSEMENT, ept.COMMUNE, ept.DEPARTEMENT"
         order_by = "ORDER BY CSR_FAILURES DESC"
 
     elif aggregation_level == "departement":

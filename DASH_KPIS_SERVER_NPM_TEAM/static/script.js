@@ -274,6 +274,8 @@ async function loadDefaultData() {
 }
 
 async function loadData(startDate, endDate) {
+    if (mainInFlight) return;
+    mainInFlight = true;
     showLoading(true);
     clearError();
 
@@ -289,6 +291,7 @@ async function loadData(startDate, endDate) {
     } catch (error) {
         showError(error.message);
     } finally {
+        mainInFlight = false;
         showLoading(false);
     }
 }
@@ -494,6 +497,13 @@ function updateCurrentRange(startDate, endDate, totalRecords) {
 // =============================================================================
 
 async function switchSection(section) {
+    // CA_LOCK — gate CSSR Analysis behind a password. Remove this block to disable.
+    if (section === 'cssr-analysis' && !caIsUnlocked()) {
+        caShowLock(() => switchSection('cssr-analysis'));
+        return;
+    }
+    // /CA_LOCK
+
     currentSection = section;
 
     // Update section button states
@@ -553,6 +563,8 @@ async function fetchPacketLossData(startDate, endDate, view = 'hourly') {
 }
 
 async function loadPacketLossData(startDate, endDate) {
+    if (mainInFlight) return;
+    mainInFlight = true;
     const container = document.getElementById('packet-loss-container');
     document.getElementById('loading').style.display = 'flex';
     container.style.display = 'none';
@@ -570,6 +582,7 @@ async function loadPacketLossData(startDate, endDate) {
     } catch (error) {
         showError(error.message);
     } finally {
+        mainInFlight = false;
         document.getElementById('loading').style.display = 'none';
         container.style.display = 'grid';
     }
@@ -597,7 +610,9 @@ function renderPacketLossChart(data) {
         cssr_ericsson: row.CSSR_ERICSSON !== undefined ? row.CSSR_ERICSSON : null,
         cssr_huawei: row.CSSR_HUAWEI !== undefined ? row.CSSR_HUAWEI : null,
         pl_count_ericsson: row.packet_loss_count_ericsson !== undefined ? row.packet_loss_count_ericsson : null,
-        pl_count_huawei: row.packet_loss_count_huawei !== undefined ? row.packet_loss_count_huawei : null
+        pl_count_huawei: row.packet_loss_count_huawei !== undefined ? row.packet_loss_count_huawei : null,
+        avail_ericsson: row.CELL_AVAILABILITY_RATE_ERICSSON !== undefined ? row.CELL_AVAILABILITY_RATE_ERICSSON : null,
+        avail_huawei: row.CELL_AVAILABILITY_RATE_HUAWEI !== undefined ? row.CELL_AVAILABILITY_RATE_HUAWEI : null
     }));
 
     const labelData = normalized.map(row => ({
@@ -771,17 +786,179 @@ function renderPacketLossChart(data) {
         },
         options: buildChartOptions(labelData)
     });
+
+    // Availability chart options (single Y axis, %)
+    function buildAvailOptions(labelDataRef) {
+        return {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: {
+                    position: 'bottom',
+                    labels: { usePointStyle: true, padding: 15 }
+                },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            let label = context.dataset.label || '';
+                            if (label) label += ': ';
+                            if (context.parsed.y !== null) label += context.parsed.y.toFixed(2) + '%';
+                            return label;
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    display: true,
+                    title: { display: true, text: isDaily ? 'Date' : 'Date / Time' },
+                    ticks: {
+                        maxRotation: 45,
+                        minRotation: 45,
+                        autoSkip: true,
+                        maxTicksLimit: isDaily ? 10 : 24,
+                        callback: function(value, idx) {
+                            const current = labelDataRef[idx];
+                            if (!current) return '';
+                            if (isDaily) return current.date;
+                            const prev = idx > 0 ? labelDataRef[idx - 1] : null;
+                            if (!prev || prev.date !== current.date) return [current.date, current.time];
+                            return current.time;
+                        }
+                    }
+                },
+                y: {
+                    type: 'linear',
+                    display: true,
+                    position: 'left',
+                    title: { display: true, text: 'Cell Availability (%)' },
+                    suggestedMin: 95,
+                    suggestedMax: 100
+                }
+            }
+        };
+    }
+
+    const availThreshold = {
+        type: 'line',
+        label: 'Threshold (99)',
+        data: normalized.map(() => 99),
+        borderColor: '#e74c3c',
+        backgroundColor: 'transparent',
+        borderWidth: 2,
+        borderDash: [10, 5],
+        fill: false,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        yAxisID: 'y',
+        order: 0
+    };
+
+    // --- Chart 3: Cell Availability Ericsson ---
+    const ctxAE = addChartCard('Cell Availability — Ericsson', 'pl-chart-avail-ericsson');
+    packetLossCharts['pl-chart-avail-ericsson'] = new Chart(ctxAE, {
+        data: {
+            labels,
+            datasets: [
+                {
+                    type: 'line',
+                    label: 'Cell Availability Ericsson (%)',
+                    data: normalized.map(r => r.avail_ericsson),
+                    borderColor: '#2ecc71',
+                    backgroundColor: 'rgba(46,204,113,0.15)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.1,
+                    pointRadius: 2,
+                    pointHoverRadius: 5,
+                    yAxisID: 'y',
+                    order: 1
+                },
+                availThreshold
+            ]
+        },
+        options: buildAvailOptions(labelData)
+    });
+
+    // --- Chart 4: Cell Availability Huawei ---
+    const ctxAH = addChartCard('Cell Availability — Huawei', 'pl-chart-avail-huawei');
+    packetLossCharts['pl-chart-avail-huawei'] = new Chart(ctxAH, {
+        data: {
+            labels,
+            datasets: [
+                {
+                    type: 'line',
+                    label: 'Cell Availability Huawei (%)',
+                    data: normalized.map(r => r.avail_huawei),
+                    borderColor: '#9b59b6',
+                    backgroundColor: 'rgba(155,89,182,0.15)',
+                    borderWidth: 2,
+                    fill: true,
+                    tension: 0.1,
+                    pointRadius: 2,
+                    pointHoverRadius: 5,
+                    yAxisID: 'y',
+                    order: 1
+                },
+                availThreshold
+            ]
+        },
+        options: buildAvailOptions(labelData)
+    });
 }
 
 // =============================================================================
 // CSSR ANALYSIS SECTION
 // =============================================================================
 
+// CA_LOCK — password gate for CSSR Analysis. Remove the block below to disable.
+const CA_LOCK_KEY = 'ca_unlocked';
+const CA_LOCK_PWD = 'NPM';
+function caIsUnlocked() { return sessionStorage.getItem(CA_LOCK_KEY) === '1'; }
+function caShowLock(onSuccess) {
+    const overlay = document.getElementById('ca-lock-overlay');
+    const input   = document.getElementById('ca-lock-input');
+    const error   = document.getElementById('ca-lock-error');
+    overlay.style.display = 'flex';
+    input.value = '';
+    error.textContent = '';
+    input.focus();
+    const submit = () => {
+        if (input.value === CA_LOCK_PWD) {
+            sessionStorage.setItem(CA_LOCK_KEY, '1');
+            overlay.style.display = 'none';
+            cleanup();
+            onSuccess();
+        } else {
+            error.textContent = 'Wrong password';
+            input.value = '';
+            input.focus();
+        }
+    };
+    const cancel = () => {
+        overlay.style.display = 'none';
+        cleanup();
+    };
+    const onKey = (e) => { if (e.key === 'Enter') submit(); };
+    document.getElementById('ca-lock-submit').addEventListener('click', submit);
+    document.getElementById('ca-lock-cancel').addEventListener('click', cancel);
+    input.addEventListener('keydown', onKey);
+    function cleanup() {
+        document.getElementById('ca-lock-submit').removeEventListener('click', submit);
+        document.getElementById('ca-lock-cancel').removeEventListener('click', cancel);
+        input.removeEventListener('keydown', onKey);
+    }
+}
+// /CA_LOCK
+
 // State for CSSR Analysis
-let caLevel     = 'cell_name';
-let caTopN      = 50;
-let caSortBy    = 'CSR_FAILURES';
-let caPieCharts = {};
+let caLevel        = 'cell_name';
+let caTopN         = 50;
+let caSortBy       = 'CSR_FAILURES';
+let caPieCharts    = {};
+let caAbortCtrl    = null; // AbortController for the current CSSR Analysis batch
+let mainInFlight   = false; // true while KPI or packet-loss request is running
 let caBarCharts = {};
 let _lastBarE   = [];
 let _lastBarH   = [];
@@ -791,14 +968,19 @@ const CA_MAP_LEVELS = ['cell_name', 'site_name'];
 
 // Sort column mapping: key → { ericsson col, huawei col, higherIsBetter }
 const SORT_COLS = {
-    CSR_FAILURES: { e: 'CSR_FAILURES',                   h: 'CSR_FAILURES',                   higherIsBetter: false },
-    CSSR:         { e: 'CSSR_ERICSSON',                  h: 'CSSR_HUAWEI',                    higherIsBetter: false }, // worst = lowest
-    CDR:          { e: 'CDR_ERICSSON',                   h: 'CDR_HUAWEI',                     higherIsBetter: true  }, // worst = highest
-    CBR:          { e: 'CBR_ERICSSON',                   h: 'CBR_HUAWEI',                     higherIsBetter: true  },
-    TCH_CONG:     { e: 'TCH_CONGESTION_RATE_ERICSSON',   h: 'TCH_CONGESTION_RATE_HUAWEI',     higherIsBetter: true  },
-    SDCCH_DROP:   { e: 'SDCCH_DROP_RATE_ERICSSON',       h: 'SDCCH_DROP_RATE_HUAWEI',         higherIsBetter: true  },
-    SDCCH_CONG:   { e: 'SDCCH_CONGESTION_RATE_ERICSSON', h: 'SDCCH_CONGESTION_RATE_HUAWEI',   higherIsBetter: true  },
-    TRAFFIC_VOIX: { e: 'TRAFFIC_VOIX_ERICSSON',          h: 'TRAFFIC_VOIX_HUAWEI',            higherIsBetter: false }, // worst = lowest traffic
+    CSR_FAILURES:   { e: 'CSR_FAILURES',                   h: 'CSR_FAILURES',                   higherIsBetter: false },
+    CSSR:           { e: 'CSSR_ERICSSON',                  h: 'CSSR_HUAWEI',                    higherIsBetter: false }, // worst = lowest
+    CDR:            { e: 'CDR_ERICSSON',                   h: 'CDR_HUAWEI',                     higherIsBetter: true  },
+    CBR:            { e: 'CBR_ERICSSON',                   h: 'CBR_HUAWEI',                     higherIsBetter: true  },
+    TCH_CONG:       { e: 'TCH_CONGESTION_RATE_ERICSSON',   h: 'TCH_CONGESTION_RATE_HUAWEI',     higherIsBetter: true  },
+    SDCCH_DROP:     { e: 'SDCCH_DROP_RATE_ERICSSON',       h: 'SDCCH_DROP_RATE_HUAWEI',         higherIsBetter: true  },
+    SDCCH_CONG:     { e: 'SDCCH_CONGESTION_RATE_ERICSSON', h: 'SDCCH_CONGESTION_RATE_HUAWEI',   higherIsBetter: true  },
+    TRAFFIC_VOIX:   { e: 'TRAFFIC_VOIX_ERICSSON',          h: 'TRAFFIC_VOIX_HUAWEI',            higherIsBetter: false },
+    // Failure component counts
+    SDCCH_FAIL1_CT: { e: 'NUMBER_SDCONG',                  h: 'SDCCH_ASSIGN_FAILS',             higherIsBetter: false },
+    SDCCH_DROP_CT:  { e: 'NUMBER_OF_SDDROPS',              h: 'SDCCH_DROPS',                    higherIsBetter: false },
+    TCH_ASSIGN_CT:  { e: 'TCH_ASSIGN_FAILS',               h: 'TCH_ASSIGN_FAILS',               higherIsBetter: false },
+    TCH_DROP_CT:    { e: 'NUMBER_OF_TCH_DROPS',            h: 'TCH_DROPS',                      higherIsBetter: false },
 };
 
 function updateMapBtnVisibility() {
@@ -809,15 +991,11 @@ function updateMapBtnVisibility() {
 function initCaDateDefaults() {
     const start     = document.getElementById('ca-start-date');
     const end       = document.getElementById('ca-end-date');
-    const timeStart = document.getElementById('ca-time-start');
-    const timeEnd   = document.getElementById('ca-time-end');
     if (!start.value || !end.value) {
         const today = new Date().toISOString().split('T')[0];
         start.value = today;
         end.value   = today;
     }
-    if (!timeStart.value) timeStart.value = '00:00';
-    if (!timeEnd.value)   timeEnd.value   = '23:00';
 }
 
 function setupCaEventListeners() {
@@ -832,7 +1010,8 @@ function setupCaEventListeners() {
         });
     });
 
-    // Auto-format time inputs as HH:MM while typing
+
+    // Auto-format time inputs: typing "1400" → "14:00"
     ['ca-time-start', 'ca-time-end'].forEach(id => {
         document.getElementById(id).addEventListener('input', e => {
             let v = e.target.value.replace(/[^0-9]/g, '');
@@ -885,19 +1064,25 @@ function setupCaEventListeners() {
     });
 }
 
-async function fetchWorstCells(script, startDate, endDate, level, timeStart, timeEnd) {
+async function fetchWorstCells(script, startDate, endDate, level, timeStart, timeEnd, signal) {
     const params = new URLSearchParams({ script, start_date: startDate, end_date: endDate });
     if (level)     params.set('aggregation_level', level);
     if (timeStart) params.set('time_start', timeStart);
     if (timeEnd)   params.set('time_end',   timeEnd);
 
-    const res  = await fetch('/api/worst-cells?' + params.toString());
+    const res  = await fetch('/api/worst-cells?' + params.toString(), { signal });
     const json = await res.json();
     if (!res.ok) throw new Error(json.detail || 'API error');
     return json.data || [];
 }
 
-async function loadCssrAnalysis() {
+function setChartLoading(canvasId, loading) {
+    const el = document.getElementById(canvasId);
+    const card = el ? el.closest('.chart-card') : document.querySelector(`[data-card="${canvasId}"]`);
+    if (card) card.classList.toggle('ca-loading', loading);
+}
+
+function loadCssrAnalysis() {
     const startDate = document.getElementById('ca-start-date').value;
     const endDate   = document.getElementById('ca-end-date').value;
     if (!startDate || !endDate) return;
@@ -909,36 +1094,72 @@ async function loadCssrAnalysis() {
     const timeStart = document.getElementById('ca-time-start').value || null;
     const timeEnd   = document.getElementById('ca-time-end').value   || null;
 
-    document.getElementById('ca-loading').style.display = 'flex';
-
-    try {
-        // Pie charts: no aggregation (network-level breakdown)
-        const [pieE, pieH, barE, barH] = await Promise.all([
-            fetchWorstCells('2g_ericsson_worst_cell', startDate, endDate, null,    timeStart, timeEnd),
-            fetchWorstCells('2g_huawei_worst_cell',   startDate, endDate, null,    timeStart, timeEnd),
-            fetchWorstCells('2g_ericsson_worst_cell', startDate, endDate, caLevel, timeStart, timeEnd),
-            fetchWorstCells('2g_huawei_worst_cell',   startDate, endDate, caLevel, timeStart, timeEnd),
-        ]);
-
-        _lastBarE = barE;
-        _lastBarH = barH;
-
-        renderPieChart('ca-pie-ericsson', pieE, 'ERICSSON', caPieCharts);
-        renderPieChart('ca-pie-huawei',   pieH, 'HUAWEI',   caPieCharts);
-        renderWorstBar('ca-bar-ericsson', barE, 'ERICSSON', caLevel, caBarCharts);
-        renderWorstBar('ca-bar-huawei',   barH, 'HUAWEI',   caLevel, caBarCharts);
-
-    } catch (err) {
-        showError('CSSR Analysis error: ' + err.message);
-    } finally {
-        document.getElementById('ca-loading').style.display = 'none';
+    if (timeStart && timeEnd && timeStart >= timeEnd) {
+        showError('Time filter: start time must be before end time');
+        return;
     }
+
+    // Cancel any previous in-flight batch
+    if (caAbortCtrl) caAbortCtrl.abort();
+    caAbortCtrl = new AbortController();
+    const signal = caAbortCtrl.signal;
+
+    const jobs = [
+        {
+            canvas: 'ca-pie-ericsson', script: '2g_ericsson_worst_cell', level: null,
+            render: rows => renderPieChart('ca-pie-ericsson', rows, 'ERICSSON', caPieCharts),
+        },
+        {
+            canvas: 'ca-pie-huawei', script: '2g_huawei_worst_cell', level: null,
+            render: rows => renderPieChart('ca-pie-huawei', rows, 'HUAWEI', caPieCharts),
+        },
+        {
+            canvas: 'ca-bar-ericsson', script: '2g_ericsson_worst_cell', level: caLevel,
+            render: rows => { _lastBarE = rows; renderWorstBar('ca-bar-ericsson', rows, 'ERICSSON', caLevel, caBarCharts); },
+        },
+        {
+            canvas: 'ca-bar-huawei', script: '2g_huawei_worst_cell', level: caLevel,
+            render: rows => { _lastBarH = rows; renderWorstBar('ca-bar-huawei', rows, 'HUAWEI', caLevel, caBarCharts); },
+        },
+    ];
+
+    jobs.forEach(({ canvas, script, level, render }) => {
+        setChartLoading(canvas, true);
+        fetchWorstCells(script, startDate, endDate, level, timeStart, timeEnd, signal)
+            .then(rows => { if (!signal.aborted) render(rows); })
+            .catch(err => { if (err.name !== 'AbortError') showError(`${canvas}: ${err.message}`); })
+            .finally(() => { if (!signal.aborted) setChartLoading(canvas, false); });
+    });
+}
+
+function showNoData(canvasId) {
+    const canvas = document.getElementById(canvasId);
+    if (!canvas) return;
+    const wrapper = canvas.closest('.chart-wrapper');
+    if (!wrapper) return;
+    // Tag the card so setChartLoading can still find it after the canvas is hidden
+    const card = wrapper.closest('.chart-card');
+    if (card) card.dataset.card = canvasId;
+    // Hide the canvas but keep it in the DOM so setChartLoading still works
+    canvas.style.display = 'none';
+    // Remove any existing no-data message then add a fresh one
+    const prev = wrapper.querySelector('.no-data-msg');
+    if (prev) prev.remove();
+    const msg = document.createElement('p');
+    msg.className = 'no-data-msg';
+    msg.style.cssText = 'padding:60px 20px;text-align:center;color:#999;font-size:1rem;';
+    msg.textContent = 'No data for selected filters';
+    wrapper.appendChild(msg);
 }
 
 function renderPieChart(canvasId, rows, vendor, chartStore) {
     if (chartStore[canvasId]) { chartStore[canvasId].destroy(); delete chartStore[canvasId]; }
 
-    if (!rows || rows.length === 0) return;
+    // Restore canvas visibility in case a previous call hid it
+    const canvasEl = document.getElementById(canvasId);
+    if (canvasEl) { canvasEl.style.display = ''; const prev = canvasEl.closest('.chart-wrapper')?.querySelector('.no-data-msg'); if (prev) prev.remove(); }
+
+    if (!rows || rows.length === 0) { showNoData(canvasId); return; }
     const r = rows[0]; // single row when no aggregation
 
     const isEricsson = vendor === 'ERICSSON';
@@ -961,6 +1182,9 @@ function renderPieChart(canvasId, rows, vendor, chartStore) {
             r['TCH_DROPS']          || 0,
         ];
     }
+
+    // If every failure component is 0, there is nothing to show
+    if (values.every(v => v === 0)) { showNoData(canvasId); return; }
 
     const ctx = document.getElementById(canvasId).getContext('2d');
     chartStore[canvasId] = new Chart(ctx, {
@@ -1016,7 +1240,11 @@ function renderPieChart(canvasId, rows, vendor, chartStore) {
 function renderWorstBar(canvasId, rows, vendor, level, chartStore) {
     if (chartStore[canvasId]) { chartStore[canvasId].destroy(); delete chartStore[canvasId]; }
 
-    if (!rows || rows.length === 0) return;
+    // Restore canvas visibility in case a previous call hid it via showNoData
+    const canvasEl = document.getElementById(canvasId);
+    if (canvasEl) { canvasEl.style.display = ''; const prev = canvasEl.closest('.chart-wrapper')?.querySelector('.no-data-msg'); if (prev) prev.remove(); }
+
+    if (!rows || rows.length === 0) { showNoData(canvasId); return; }
 
     const isE      = vendor === 'ERICSSON';
     const sortCfg  = SORT_COLS[caSortBy] || SORT_COLS['CSR_FAILURES'];
@@ -1055,34 +1283,10 @@ function renderWorstBar(canvasId, rows, vendor, level, chartStore) {
     const titleEl = document.getElementById(titleId);
     if (titleEl) titleEl.textContent = `${vendor === 'ERICSSON' ? 'Ericsson' : 'Huawei'} \u2014 Top ${caTopN} Worst ${levelLabel} by ${sortLabel}`;
 
-    // Build tooltip extra lines per vendor
-    const TOOLTIP_ROWS = isE ? [
-        { col: 'CSR_FAILURES',                    label: 'CSR Failures'     },
-        { col: 'CSSR_ERICSSON',                   label: 'CSSR (%)'         },
-        { col: 'CDR_ERICSSON',                    label: 'CDR (%)'          },
-        { col: 'CBR_ERICSSON',                    label: 'CBR (%)'          },
-        { col: 'CELL_AVAILABILITY_RATE_ERICSSON', label: 'Cell Avail. (%)'  },
-        { col: 'TCH_CONGESTION_RATE_ERICSSON',    label: 'TCH Cong. (%)'   },
-        { col: 'SDCCH_DROP_RATE_ERICSSON',        label: 'SDCCH Drop (%)'  },
-        { col: 'SDCCH_CONGESTION_RATE_ERICSSON',  label: 'SDCCH Cong. (%)' },
-        { col: 'TRAFFIC_VOIX_ERICSSON',           label: 'Voice Traffic (Erl)' },
-        { col: 'TRAFFIC_DATA_GB_ERICSSON',        label: 'Data Traffic (GB)'   },
-    ] : [
-        { col: 'CSR_FAILURES',                    label: 'CSR Failures'     },
-        { col: 'CSSR_HUAWEI',                     label: 'CSSR (%)'         },
-        { col: 'CDR_HUAWEI',                      label: 'CDR (%)'          },
-        { col: 'CBR_HUAWEI',                      label: 'CBR (%)'          },
-        { col: 'CELL_AVAILABILITY_RATE_HUAWEI',   label: 'Cell Avail. (%)'  },
-        { col: 'TCH_CONGESTION_RATE_HUAWEI',      label: 'TCH Cong. (%)'   },
-        { col: 'SDCCH_DROP_RATE_HUAWEI',          label: 'SDCCH Drop (%)'  },
-        { col: 'SDCCH_CONGESTION_RATE_HUAWEI',    label: 'SDCCH Cong. (%)' },
-        { col: 'TRAFFIC_VOIX_HUAWEI',             label: 'Voice Traffic (Erl)' },
-        { col: 'HANDOVER_SUCCESS_RATE_HUAWEI',    label: 'Handover SR (%)'  },
-    ];
-
     const ctx = document.getElementById(canvasId).getContext('2d');
     chartStore[canvasId] = new Chart(ctx, {
         type: 'bar',
+        plugins: [ChartDataLabels],
         data: {
             labels,
             datasets: [{
@@ -1099,25 +1303,117 @@ function renderWorstBar(canvasId, rows, vendor, level, chartStore) {
             maintainAspectRatio: false,
             plugins: {
                 legend: { display: false },
+                datalabels: {
+                    anchor: 'center',
+                    align: 'center',
+                    color: '#111',
+                    font: { size: 10, weight: 'bold' },
+                    formatter: (value, ctx) => {
+                        const row = topN[ctx.dataIndex];
+                        if (!row) return '';
+                        const w = parseFloat(row['Weight_CSR_FAILURES']);
+                        return isNaN(w) ? '' : w.toFixed(2) + '%';
+                    },
+                },
                 tooltip: {
-                    callbacks: {
-                        title: items => items.map(i => i.label),
-                        label: item => {
-                            const v = item.parsed.x;
-                            return ` ${sortLabel}: ${typeof v === 'number' ? v.toLocaleString(undefined, { maximumFractionDigits: 2 }) : v}`;
-                        },
-                        afterBody: items => {
-                            if (!items.length) return [];
-                            const idx = items[0].dataIndex;
-                            const row = topN[idx];
-                            if (!row) return [];
-                            return TOOLTIP_ROWS
-                                .filter(({ col }) => col !== sortCol && row[col] != null && row[col] !== '')
-                                .map(({ col, label }) => {
-                                    const v = parseFloat(row[col]);
-                                    return ` ${label}: ${isNaN(v) ? row[col] : v.toLocaleString(undefined, { maximumFractionDigits: 2 })}`;
-                                });
+                    enabled: false,
+                    external: (context) => {
+                        const { chart, tooltip } = context;
+                        let el = document.getElementById('ca-bar-tooltip');
+                        if (!el) {
+                            el = document.createElement('div');
+                            el.id = 'ca-bar-tooltip';
+                            el.style.cssText = 'position:absolute;background:#1e2a3a;color:#ecf0f1;border-radius:8px;padding:10px 14px;font-size:12px;line-height:1.6;pointer-events:none;z-index:9999;max-width:280px;box-shadow:0 4px 16px rgba(0,0,0,0.4);';
+                            document.body.appendChild(el);
                         }
+                        if (tooltip.opacity === 0) { el.style.display = 'none'; return; }
+
+                        const idx = tooltip.dataPoints?.[0]?.dataIndex;
+                        const row = topN[idx];
+                        if (!row) { el.style.display = 'none'; return; }
+
+                        const fmt = (v) => { const f = parseFloat(v); return isNaN(f) ? null : f.toLocaleString(undefined, { maximumFractionDigits: 2 }); };
+                        const sep = `<div style="border-top:1px solid rgba(255,255,255,0.15);margin:6px 0;"></div>`;
+
+                        const GROUPS = isE ? [
+                            [
+                                { col: 'CSR_FAILURES',        label: 'CSR Failures'           },
+                                { col: 'Weight_CSR_FAILURES', label: 'Weight in Network (%)'  },
+                            ],
+                            [
+                                { col: 'NUMBER_SDCONG',              label: 'SDCCH Cong (count)'           },
+                                { col: 'GLOBAL_WEIGHT_SDCONG(%)',     label: 'SDCCH Cong global wt (%)'     },
+                                { col: 'NUMBER_OF_SDDROPS',          label: 'SDCCH Drops (count)'          },
+                                { col: 'GLOBAL_WEIGHT_SDDROPS(%)',    label: 'SDCCH Drops global wt (%)'    },
+                                { col: 'TCH_ASSIGN_FAILS',           label: 'TCH Assign Fails (count)'     },
+                                { col: 'GLOBAL_WEIGHT_TCH_ASSIGN(%)', label: 'TCH Assign global wt (%)'    },
+                                { col: 'NUMBER_OF_TCH_DROPS',        label: 'TCH Drops (count)'            },
+                                { col: 'GLOBAL_WEIGHT_TCH_DROPS(%)',  label: 'TCH Drops global wt (%)'     },
+                            ],
+                            [
+                                { col: 'CSSR_ERICSSON',                   label: 'CSSR (%)'            },
+                                { col: 'CDR_ERICSSON',                    label: 'CDR (%)'             },
+                                { col: 'CBR_ERICSSON',                    label: 'CBR (%)'             },
+                                { col: 'CELL_AVAILABILITY_RATE_ERICSSON', label: 'Cell Avail. (%)'     },
+                                { col: 'TCH_CONGESTION_RATE_ERICSSON',    label: 'TCH Cong. (%)'       },
+                                { col: 'SDCCH_DROP_RATE_ERICSSON',        label: 'SDCCH Drop (%)'      },
+                                { col: 'SDCCH_CONGESTION_RATE_ERICSSON',  label: 'SDCCH Cong. (%)'     },
+                                { col: 'TRAFFIC_VOIX_ERICSSON',           label: 'Voice Traffic (Erl)' },
+                                { col: 'TRAFFIC_DATA_GB_ERICSSON',        label: 'Data Traffic (GB)'   },
+                            ],
+                        ] : [
+                            [
+                                { col: 'CSR_FAILURES',        label: 'CSR Failures'          },
+                                { col: 'Weight_CSR_FAILURES', label: 'Weight in Network (%)' },
+                            ],
+                            [
+                                { col: 'SDCCH_ASSIGN_FAILS',               label: 'SDCCH Assign Fails (count)'   },
+                                { col: 'GLOBAL_WEIGHT_SDCCH_ASSIGN(%)',     label: 'SDCCH Assign global wt (%)'   },
+                                { col: 'SDCCH_DROPS',                       label: 'SDCCH Drops (count)'          },
+                                { col: 'GLOBAL_WEIGHT_SDCCH_DROPS(%)',      label: 'SDCCH Drops global wt (%)'    },
+                                { col: 'TCH_ASSIGN_FAILS',                  label: 'TCH Assign Fails (count)'     },
+                                { col: 'GLOBAL_WEIGHT_TCH_ASSIGN(%)',       label: 'TCH Assign global wt (%)'     },
+                                { col: 'TCH_DROPS',                         label: 'TCH Drops (count)'            },
+                                { col: 'GLOBAL_WEIGHT_TCH_DROPS(%)',        label: 'TCH Drops global wt (%)'      },
+                            ],
+                            [
+                                { col: 'CSSR_HUAWEI',                    label: 'CSSR (%)'            },
+                                { col: 'CDR_HUAWEI',                     label: 'CDR (%)'             },
+                                { col: 'CBR_HUAWEI',                     label: 'CBR (%)'             },
+                                { col: 'CELL_AVAILABILITY_RATE_HUAWEI',  label: 'Cell Avail. (%)'     },
+                                { col: 'TCH_CONGESTION_RATE_HUAWEI',     label: 'TCH Cong. (%)'       },
+                                { col: 'SDCCH_DROP_RATE_HUAWEI',         label: 'SDCCH Drop (%)'      },
+                                { col: 'SDCCH_CONGESTION_RATE_HUAWEI',   label: 'SDCCH Cong. (%)'     },
+                                { col: 'TRAFFIC_VOIX_HUAWEI',            label: 'Voice Traffic (Erl)' },
+                                { col: 'HANDOVER_SUCCESS_RATE_HUAWEI',   label: 'Handover SR (%)'     },
+                            ],
+                        ];
+
+                        const nameCol = ['site_name','commune','arrondissement','departement','controller_name'].includes(caLevel) ? caLevel : 'cell_name';
+                        const title = row[nameCol] || row['cell_name'] || '';
+                        let html = `<div style="font-weight:700;font-size:13px;margin-bottom:6px;color:#3498db;">${title}</div>`;
+
+                        GROUPS.forEach((group, gi) => {
+                            if (gi > 0) html += sep;
+                            group.forEach(({ col, label }) => {
+                                const v = fmt(row[col]);
+                                if (v === null) return;
+                                html += `<div style="display:flex;justify-content:space-between;gap:16px;"><span style="color:#bdc3c7;">${label}</span><span style="font-weight:600;">${v}</span></div>`;
+                            });
+                        });
+
+                        el.innerHTML = html;
+                        el.style.display = 'block';
+
+                        const rect = chart.canvas.getBoundingClientRect();
+                        const scrollX = window.scrollX || 0;
+                        const scrollY = window.scrollY || 0;
+                        let left = rect.left + scrollX + tooltip.caretX + 12;
+                        let top  = rect.top  + scrollY + tooltip.caretY - 10;
+                        // keep within viewport
+                        if (left + 290 > window.innerWidth + scrollX) left = rect.left + scrollX + tooltip.caretX - 290;
+                        el.style.left = left + 'px';
+                        el.style.top  = top  + 'px';
                     }
                 }
             },
@@ -1156,4 +1452,5 @@ function openCssrMap() {
 // Wire up CSSR Analysis listeners once DOM is ready
 document.addEventListener('DOMContentLoaded', () => {
     setupCaEventListeners();
+    updateMapBtnVisibility();
 });

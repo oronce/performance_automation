@@ -6,11 +6,14 @@ from fastapi import FastAPI, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from datetime import datetime, timedelta
+import math
+import datetime as dt
 import mysql.connector
+import duckdb
 import os
 import sys
 
-from config import DB_CONFIG, MAX_DAYS_ALLOWED, DEFAULT_DAYS, KPI_CHART_GROUPS, CHART_COLORS
+from config import DB_CONFIG, DUCKDB_PATH, MAX_DAYS_ALLOWED, DEFAULT_DAYS, KPI_CHART_GROUPS, CHART_COLORS
 
 # Worst-cell SQL generator lives in the sql/ directory
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "sql"))
@@ -26,8 +29,40 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
 def get_db_connection():
-    """Create database connection"""
+    """MySQL connection — used by /api/kpi-data only"""
     return mysql.connector.connect(**DB_CONFIG)
+
+
+def execute_duckdb_query(sql: str) -> list:
+    """
+    Execute a SQL query against the DuckDB cache and return a list of dicts.
+    Used by: /api/packet-loss-data, /api/worst-cells, /api/failure-breakdown
+    """
+    if not DUCKDB_PATH:
+        raise RuntimeError("DUCKDB_PATH is not set in .env")
+    con = duckdb.connect(DUCKDB_PATH, read_only=True)
+    try:
+        result = con.execute(sql)
+        cols = [d[0] for d in result.description]
+        rows = result.fetchall()
+        out = []
+        for row in rows:
+            r = dict(zip(cols, row))
+            # Normalize types for JSON serialization
+            for k, v in r.items():
+                if isinstance(v, dt.time):              # time — check before datetime
+                    r[k] = v.strftime("%H:%M")
+                elif isinstance(v, dt.datetime):        # datetime — check before date (subclass)
+                    r[k] = v.strftime("%H:%M")          # DuckDB TIME comes as datetime(1900,1,1,H,M)
+                elif isinstance(v, dt.date):            # plain date
+                    r[k] = v.strftime("%Y-%m-%d")
+                elif hasattr(v, '__float__'):           # Decimal / numpy scalar
+                    f = float(v)
+                    r[k] = None if (math.isnan(f) or math.isinf(f)) else f
+            out.append(r)
+        return out
+    finally:
+        con.close()
 
 
 def load_sql_query(view='hourly'):
@@ -205,33 +240,7 @@ async def get_packet_loss_data(
             end_date=end.strftime("%Y-%m-%d")
         )
 
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute(sql_query)
-        rows = cursor.fetchall()
-        cursor.close()
-        conn.close()
-
-        # Normalize date/time fields (SQL uses uppercase DATE / TIME aliases)
-        for row in rows:
-            for date_key in ('DATE', 'date'):
-                if date_key in row and row[date_key]:
-                    if hasattr(row[date_key], 'strftime'):
-                        row[date_key] = row[date_key].strftime("%Y-%m-%d")
-            for time_key in ('TIME', 'time'):
-                if time_key in row and row[time_key]:
-                    if hasattr(row[time_key], 'total_seconds'):
-                        total_seconds = int(row[time_key].total_seconds())
-                        hours = total_seconds // 3600
-                        minutes = (total_seconds % 3600) // 60
-                        row[time_key] = f"{hours:02d}:{minutes:02d}"
-                    elif hasattr(row[time_key], 'strftime'):
-                        row[time_key] = row[time_key].strftime("%H:%M")
-
-            # Convert Decimal to float for JSON
-            for key, value in row.items():
-                if hasattr(value, '__float__'):
-                    row[key] = float(value)
+        rows = execute_duckdb_query(sql_query)
 
         return {
             "success": True,
@@ -243,8 +252,6 @@ async def get_packet_loss_data(
 
     except FileNotFoundError as e:
         raise HTTPException(status_code=500, detail=str(e))
-    except mysql.connector.Error as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
@@ -289,18 +296,8 @@ async def get_worst_cells(
             time_end=time_end,
         )
 
-        conn = get_db_connection()
-        cursor = conn.cursor(dictionary=True)
-        cursor.execute(sql_query)
-        rows = cursor.fetchall()
-        cursor.close()
-        conn.close()
-
-        # Normalize Decimal → float for JSON serialization
-        for row in rows:
-            for key, value in row.items():
-                if hasattr(value, '__float__'):
-                    row[key] = float(value)
+        print(sql_query, "\n#####\n\n\n\n")
+        rows = execute_duckdb_query(sql_query)
 
         return {
             "success": True,
@@ -310,8 +307,47 @@ async def get_worst_cells(
 
     except (ValueError, FileNotFoundError) as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except mysql.connector.Error as e:
-        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
+
+
+@app.get("/api/failure-breakdown")
+async def get_failure_breakdown(
+    script: str = Query(..., description="2g_ericsson_failure_breakdown | 2g_huawei_failure_breakdown"),
+    start_date: str = Query(..., description="Start date YYYY-MM-DD"),
+    end_date: str = Query(..., description="End date YYYY-MM-DD"),
+    time_start: str = Query(None, description="Optional time filter start HH:MM"),
+    time_end: str = Query(None, description="Optional time filter end HH:MM"),
+):
+    """
+    Fetch CSR failure component breakdown at network level.
+    Returns one row: raw counts + % contribution of each component to total CSR failures.
+    """
+    try:
+        start, end = validate_date_range(start_date, end_date)
+    except HTTPException:
+        raise
+
+    try:
+        sql_query = generate_worst_cell_sql(
+            script=script,
+            start_date=start.strftime("%Y-%m-%d"),
+            end_date=end.strftime("%Y-%m-%d"),
+            aggregation_level=None,
+            time_start=time_start,
+            time_end=time_end,
+        )
+
+        rows = execute_duckdb_query(sql_query)
+
+        return {
+            "success": True,
+            "data": rows,
+            "total_records": len(rows),
+        }
+
+    except (ValueError, FileNotFoundError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
@@ -327,3 +363,15 @@ if __name__ == "__main__":
     print("Starting KPI Dashboard Server...")
     print(f"Open http://localhost:8000 in your browser")
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+
+
+
+
+
+
+
+
+
+

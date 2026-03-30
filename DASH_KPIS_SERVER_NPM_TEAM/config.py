@@ -1,6 +1,20 @@
+import os
+
+# Load .env from project root (no external dependency)
+_env_file = os.path.join(os.path.dirname(__file__), ".env")
+if os.path.exists(_env_file):
+    with open(_env_file, encoding="utf-8") as _f:
+        for _line in _f:
+            _line = _line.strip()
+            if _line and not _line.startswith("#") and "=" in _line:
+                _k, _v = _line.split("=", 1)
+                os.environ.setdefault(_k.strip(), _v.strip())
+
 # =============================================================================
 # DATABASE CONFIGURATION
 # =============================================================================
+
+# MySQL — used by /api/kpi-data only
 DB_CONFIG = {
     'host': '10.22.33.116',
     'user': 'root',
@@ -69,3 +83,10 @@ CHART_COLORS = [
     "#f39c12",  # Orange
     "#9b59b6",  # Purple
 ]
+
+# =============================================================================
+# DUCKDB
+# Used by: /api/packet-loss-data, /api/worst-cells, /api/failure-breakdown
+# Set DUCKDB_PATH in .env
+# =============================================================================
+DUCKDB_PATH = os.environ.get("DUCKDB_PATH", "")

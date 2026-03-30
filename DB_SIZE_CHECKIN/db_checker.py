@@ -10,86 +10,71 @@ DB_CONFIG = {
     'connect_timeout': 10,
 }
 
-DATABASES = ['performanceroute', 'prismis']
+DATA_DIR  = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
+SQLITE_DB = os.path.join(DATA_DIR, 'db_sizes.db')
 
-DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data')
-SQLITE_PATH = os.path.join(DATA_DIR, 'db_sizes.db')
+QUERIES = {
+    'prismis': """
+        SELECT table_name,
+               ROUND((data_length + index_length) / 1024 / 1024, 2) AS size_mb,
+               table_rows
+        FROM information_schema.tables
+        WHERE table_schema = 'prismis'
+        ORDER BY size_mb DESC
+    """,
+    'performanceroute': """
+        SELECT table_name,
+               ROUND((data_length + index_length) / 1024 / 1024, 2) AS size_mb,
+               table_rows
+        FROM information_schema.tables
+        WHERE table_schema = 'performanceroute'
+        ORDER BY size_mb DESC
+    """,
+}
 
 
 def init_db():
     os.makedirs(DATA_DIR, exist_ok=True)
-    conn = sqlite3.connect(SQLITE_PATH)
-    c = conn.cursor()
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS size_snapshots (
-            id            INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp     TEXT    NOT NULL,
-            db_name       TEXT    NOT NULL,
-            table_name    TEXT    NOT NULL,
-            size_mb       REAL,
-            size_bytes    INTEGER,
-            row_count     INTEGER,
-            data_length   INTEGER,
-            index_length  INTEGER
+    conn = sqlite3.connect(SQLITE_DB)
+    conn.execute('''
+        CREATE TABLE IF NOT EXISTS snapshots (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            timestamp  TEXT    NOT NULL,
+            db_name    TEXT    NOT NULL,
+            table_name TEXT    NOT NULL,
+            size_mb    REAL,
+            table_rows INTEGER
         )
     ''')
-    c.execute('CREATE INDEX IF NOT EXISTS idx_ts    ON size_snapshots(timestamp)')
-    c.execute('CREATE INDEX IF NOT EXISTS idx_table ON size_snapshots(db_name, table_name)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_ts  ON snapshots(timestamp)')
+    conn.execute('CREATE INDEX IF NOT EXISTS idx_tbl ON snapshots(db_name, table_name)')
     conn.commit()
     conn.close()
-
-
-def fetch_table_sizes():
-    placeholders = ', '.join(['%s'] * len(DATABASES))
-    query = f"""
-        SELECT
-            TABLE_SCHEMA  AS db_name,
-            TABLE_NAME    AS table_name,
-            COALESCE(DATA_LENGTH + INDEX_LENGTH, 0)              AS size_bytes,
-            ROUND(COALESCE(DATA_LENGTH + INDEX_LENGTH, 0) / 1024 / 1024, 6) AS size_mb,
-            COALESCE(TABLE_ROWS,   0) AS row_count,
-            COALESCE(DATA_LENGTH,  0) AS data_length,
-            COALESCE(INDEX_LENGTH, 0) AS index_length
-        FROM information_schema.TABLES
-        WHERE TABLE_SCHEMA IN ({placeholders})
-        ORDER BY size_bytes DESC
-    """
-    conn = mysql.connector.connect(**DB_CONFIG)
-    cursor = conn.cursor(dictionary=True)
-    cursor.execute(query, DATABASES)
-    rows = cursor.fetchall()
-    cursor.close()
-    conn.close()
-    return rows
-
-
-def save_snapshot(data):
-    conn = sqlite3.connect(SQLITE_PATH)
-    c = conn.cursor()
-    timestamp = datetime.datetime.now().isoformat()
-    c.executemany(
-        '''INSERT INTO size_snapshots
-           (timestamp, db_name, table_name, size_mb, size_bytes, row_count, data_length, index_length)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
-        [(timestamp,
-          r['db_name'], r['table_name'],
-          float(r['size_mb']), int(r['size_bytes']),
-          int(r['row_count']), int(r['data_length']), int(r['index_length']))
-         for r in data]
-    )
-    conn.commit()
-    conn.close()
-    return timestamp
 
 
 def run_check():
     init_db()
-    now = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    print(f"[{now}] Fetching table sizes from MySQL...")
-    rows = fetch_table_sizes()
-    if rows:
-        ts = save_snapshot(rows)
-        print(f"[{now}] Saved {len(rows)} rows at {ts}")
-    else:
-        print(f"[{now}] No rows returned.")
-    return rows
+    timestamp = datetime.datetime.now().isoformat()
+    conn_my = mysql.connector.connect(**DB_CONFIG)
+    cur     = conn_my.cursor()
+    rows_to_insert = []
+
+    for db_name, sql in QUERIES.items():
+        cur.execute(sql)
+        for table_name, size_mb, table_rows in cur.fetchall():
+            rows_to_insert.append((timestamp, db_name, table_name,
+                                   float(size_mb or 0), int(table_rows or 0)))
+
+    cur.close()
+    conn_my.close()
+
+    conn_sq = sqlite3.connect(SQLITE_DB)
+    conn_sq.executemany(
+        'INSERT INTO snapshots (timestamp, db_name, table_name, size_mb, table_rows) VALUES (?,?,?,?,?)',
+        rows_to_insert
+    )
+    conn_sq.commit()
+    conn_sq.close()
+
+    print(f"[{timestamp[:19]}] Saved {len(rows_to_insert)} rows")
+    return timestamp

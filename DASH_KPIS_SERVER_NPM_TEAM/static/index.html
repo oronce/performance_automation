@@ -10,6 +10,27 @@
     <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
 </head>
 <body>
+    <!-- CA_LOCK: CSSR Analysis password gate — remove this block to disable -->
+    <div id="ca-lock-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:3000;display:none;align-items:center;justify-content:center;">
+        <div style="background:#16213e;border:1px solid #3498db;border-radius:10px;padding:32px 40px;min-width:280px;text-align:center;">
+            <h3 style="color:#eee;margin-bottom:8px;">CSSR Analysis</h3>
+            <p style="color:#7f8c8d;font-size:13px;margin-bottom:20px;">Enter password to access this section</p>
+            <div style="position:relative;">
+                <input type="password" id="ca-lock-input" placeholder="Password"
+                       style="width:100%;padding:9px 38px 9px 12px;border-radius:5px;border:1.5px solid #3498db;background:#0f3460;color:#fff;font-size:14px;outline:none;box-sizing:border-box;">
+                <button type="button" id="ca-lock-eye"
+                        onclick="(function(){var i=document.getElementById('ca-lock-input');var b=document.getElementById('ca-lock-eye');i.type=i.type==='password'?'text':'password';b.textContent=i.type==='password'?'👁':'🙈';})()"
+                        style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;font-size:16px;line-height:1;padding:0;">👁</button>
+            </div>
+            <p id="ca-lock-error" style="color:#e74c3c;font-size:12px;min-height:18px;margin-top:6px;"></p>
+            <div style="display:flex;gap:10px;margin-top:4px;">
+                <button id="ca-lock-cancel" style="flex:1;padding:9px;border-radius:5px;border:1.5px solid #3498db;background:transparent;color:#3498db;font-weight:600;cursor:pointer;">Cancel</button>
+                <button id="ca-lock-submit" style="flex:1;padding:9px;border-radius:5px;border:none;background:#3498db;color:#fff;font-weight:600;cursor:pointer;">Unlock</button>
+            </div>
+        </div>
+    </div>
+    <!-- /CA_LOCK -->
+
     <!-- Login Overlay -->
     <div id="login-overlay" class="login-overlay">
         <div class="login-box">
@@ -119,23 +140,26 @@
                     <div class="filter-group">
                         <label>Time Filter (optional):</label>
                         <div class="date-inputs">
-                            <input type="text" id="ca-time-start" class="date-input" placeholder="00:00" maxlength="5" pattern="[0-2][0-9]:[0-5][0-9]" style="width:90px;">
+                            <input type="text" id="ca-time-start" class="date-input" placeholder="00:00" maxlength="5" style="width:90px;" list="time-options" autocomplete="off">
                             <span>to</span>
-                            <input type="text" id="ca-time-end" class="date-input" placeholder="23:00" maxlength="5" pattern="[0-2][0-9]:[0-5][0-9]" style="width:90px;">
+                            <input type="text" id="ca-time-end" class="date-input" placeholder="23:00" maxlength="5" style="width:90px;" list="time-options" autocomplete="off">
+                            <datalist id="time-options">
+                                <script>for(let h=0;h<24;h++){const v=String(h).padStart(2,'0')+':00';document.write(`<option value="${v}">`)}</script>
+                            </datalist>
                         </div>
                     </div>
                     <div class="filter-group" style="align-self:flex-end;">
                         <button class="btn btn-primary" id="ca-apply">Apply</button>
                     </div>
                 </div>
-                <div class="filter-row" style="margin-bottom:0;">
+                <div class="filter-row" style="margin-bottom:0; display:flex; align-items:flex-end; gap:16px; flex-wrap:wrap;">
                     <div class="filter-group">
                         <label>Aggregation:</label>
                         <div class="btn-group">
                             <button class="btn ca-btn active" data-ca-level="cell_name">Cell</button>
                             <button class="btn ca-btn" data-ca-level="site_name">Site</button>
-                            <button class="btn ca-btn" data-ca-level="commune">Commune</button>
                             <button class="btn ca-btn" data-ca-level="arrondissement">Arrondissement</button>
+                            <button class="btn ca-btn" data-ca-level="commune">Commune</button>
                             <button class="btn ca-btn" data-ca-level="departement">Département</button>
                             <button class="btn ca-btn" data-ca-level="controller_name">Controller</button>
                         </div>
@@ -195,6 +219,12 @@
                             <option value="SDCCH_DROP">SDCCH Drop Rate (%)</option>
                             <option value="SDCCH_CONG">SDCCH Congestion (%)</option>
                             <option value="TRAFFIC_VOIX">Voice Traffic (Erl)</option>
+                            <optgroup label="── Failure Components ──">
+                            <option value="SDCCH_FAIL1_CT">SDCCH Cong/Assign Fails (count)</option>
+                            <option value="SDCCH_DROP_CT">SDCCH Drops (count)</option>
+                            <option value="TCH_ASSIGN_CT">TCH Assign Fails (count)</option>
+                            <option value="TCH_DROP_CT">TCH Drops (count)</option>
+                            </optgroup>
                         </select>
                     </div>
                 </div>

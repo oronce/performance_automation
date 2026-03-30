@@ -280,6 +280,20 @@ header .subtitle {
     border-color: #3498db;
 }
 
+.select-input {
+    padding: 8px 12px;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    font-size: 14px;
+    background: #fff;
+    cursor: pointer;
+}
+
+.select-input:focus {
+    outline: none;
+    border-color: #3498db;
+}
+
 /* =============================================================================
    Filter info bar
    ============================================================================= */
@@ -298,6 +312,82 @@ header .subtitle {
 #current-range {
     color: #666;
     font-size: 14px;
+}
+
+/* Appearance toggle button */
+.btn-appearance-toggle {
+    background: none;
+    border: 1px solid #bbb;
+    border-radius: 5px;
+    padding: 5px 12px;
+    font-size: 13px;
+    color: #555;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.btn-appearance-toggle:hover,
+.btn-appearance-toggle.active {
+    background: #3498db;
+    color: #fff;
+    border-color: #3498db;
+}
+
+/* Collapsible appearance panel */
+.appearance-panel {
+    margin-top: 12px;
+    padding: 16px 20px;
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+}
+
+.appearance-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px 24px;
+}
+
+.appearance-item {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.appearance-item label {
+    font-size: 13px;
+    color: #555;
+    font-weight: 500;
+}
+
+.size-val {
+    font-weight: 700;
+    color: #3498db;
+}
+
+.appearance-slider {
+    width: 100%;
+    accent-color: #3498db;
+    cursor: pointer;
+}
+
+.bold-btn {
+    align-self: flex-start;
+    padding: 2px 10px;
+    font-size: 13px;
+    font-weight: 700;
+    border: 1px solid #bbb;
+    border-radius: 4px;
+    background: #fff;
+    cursor: pointer;
+    color: #555;
+    transition: background 0.15s, color 0.15s;
+}
+
+.bold-btn.active {
+    background: #3498db;
+    color: #fff;
+    border-color: #3498db;
 }
 
 .error-msg {
@@ -372,6 +462,7 @@ header .subtitle {
 .chart-title {
     font-size: 1rem;
     color: #2c3e50;
+    flex: 1;
 }
 
 .threshold-badge {
@@ -386,6 +477,34 @@ header .subtitle {
 .chart-wrapper {
     position: relative;
     height: 300px;
+}
+
+/* Expanded chart card */
+.chart-card.expanded {
+    grid-column: 1 / -1;
+}
+
+.chart-card.expanded .chart-wrapper {
+    height: 500px;
+}
+
+.expand-btn {
+    background: none;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    padding: 3px 7px;
+    font-size: 13px;
+    color: #666;
+    line-height: 1;
+    transition: background 0.15s, color 0.15s;
+    flex-shrink: 0;
+}
+
+.expand-btn:hover {
+    background: #3498db;
+    color: #fff;
+    border-color: #3498db;
 }
 
 .no-data {

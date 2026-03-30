@@ -60,32 +60,56 @@ const TOOLTIP_COLS = {
 
 function buildTooltipHtml(row, vendor, name) {
   const f = v => (v != null && v !== '') ? parseFloat(v).toFixed(2) : null;
+  const row_ = (label, value) =>
+    `<div style="display:flex;justify-content:space-between;gap:10px;padding:1px 0;">` +
+    `<span style="color:#bdc3c7;">${label}</span>` +
+    `<span style="font-weight:600;color:#ecf0f1;">${value}</span></div>`;
+  const sep = `<div style="border-top:1px solid rgba(255,255,255,0.12);margin:4px 0;"></div>`;
+
+  let html = `<div style="font-weight:700;font-size:12px;color:#3498db;margin-bottom:4px;">${name}</div>`;
+  html += `<div style="font-size:10px;color:#7f8c8d;margin-bottom:4px;">${vendor}</div>`;
+  html += sep;
+
   const cols = TOOLTIP_COLS[vendor] || [];
-  const lines = [
-    `<b>${name}</b> <span style="color:#3498db;font-size:11px;">[${vendor}]</span>`,
-    `<hr style="border:none;border-top:1px solid #2c3e50;margin:4px 0;">`,
-  ];
   cols.forEach(({ col, label, unit }) => {
     const v = f(row[col]);
-    if (v !== null) lines.push(`<b>${label}:</b> ${v}${unit}`);
+    if (v !== null) html += row_(label, v + unit);
   });
-  // Geo context (only add if available and not already the label)
-  if (row['commune'])         lines.push(`<b>Commune:</b> ${row['commune']}`);
-  if (row['arrondissement'])  lines.push(`<b>Arrond.:</b> ${row['arrondissement']}`);
-  if (row['site_name'])       lines.push(`<b>Site:</b> ${row['site_name']}`);
-  if (row['controller_name']) lines.push(`<b>Controller:</b> ${row['controller_name']}`);
-  return lines.join('<br>');
+
+  // Geo block
+  const geo = [];
+  if (row['site_name'])       geo.push(row_('Site',       row['site_name']));
+  if (row['controller_name']) geo.push(row_('Controller', row['controller_name']));
+  if (row['commune'])         geo.push(row_('Commune',    row['commune']));
+  if (row['arrondissement'])  geo.push(row_('Arrond.',    row['arrondissement']));
+  const azReal = parseFloat(row['azimuth']);
+  if (isFinite(azReal)) {
+    geo.push(row_('Azimuth', azReal + '°'));
+  } else if (row._azimuth !== undefined) {
+    geo.push(row_('Azimuth', Math.round(row._azimuth) + '° <span style="color:#f39c12;">(auto)</span>'));
+  }
+  if (geo.length) { html += sep; html += geo.join(''); }
+
+  return `<div style="font-size:11px;line-height:1.55;max-height:240px;overflow-y:auto;min-width:180px;max-width:230px;">${html}</div>`;
 }
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let mapVendor    = 'BOTH';
-let selectedKpi  = 'CSSR';
-let threshold    = 99;
-let topN         = 50;   // 0 = show all; otherwise top N worst by CSSR
-let ericssonData = [];
-let huaweiData   = [];
-let leafletMap   = null;
-let markersLayer = null;
+let mapVendor       = 'BOTH';
+let selectedKpi     = 'CSSR';
+let threshold       = 99;
+let topN            = 50;
+let showRank   = false;
+let sectorMode = false;  // true = antenna sector beams, false = dot markers
+let searchText    = '';
+let filterDept       = '';
+let filterCommune    = '';
+let filterArrond     = '';
+let filterSite       = '';
+let filterController = '';
+let ericssonData  = [];
+let huaweiData    = [];
+let leafletMap    = null;
+let markersLayer  = null;
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 window.addEventListener('load', async () => {
@@ -102,6 +126,21 @@ window.addEventListener('load', async () => {
   // Update legend period
   document.getElementById('leg-period').textContent =
     START_DATE && END_DATE ? `${START_DATE} \u2192 ${END_DATE}` : 'No date range';
+
+  // Show/hide toolbar groups based on aggregation level
+  // View mode (sectors/dots) — cell level only
+  if (LEVEL !== 'cell_name') document.getElementById('grp-view-mode').style.display = 'none';
+  // Site filter — cell level only
+  if (LEVEL !== 'cell_name') document.getElementById('grp-filter-site').style.display = 'none';
+  // Arrondissement filter — only levels that return arrondissement data
+  if (!['cell_name','site_name','arrondissement'].includes(LEVEL))
+    document.getElementById('grp-filter-arrond').style.display = 'none';
+  // Département & Commune — hide for controller_name
+  if (LEVEL === 'controller_name') document.getElementById('grp-filter-dept').style.display    = 'none';
+  if (LEVEL === 'controller_name') document.getElementById('grp-filter-commune').style.display = 'none';
+  // Controller filter — only for cell_name, site_name, controller_name
+  if (!['cell_name','site_name','controller_name'].includes(LEVEL))
+    document.getElementById('grp-filter-controller').style.display = 'none';
 
   bindToolbar();
   await loadData();
@@ -137,6 +176,50 @@ function bindToolbar() {
     topN = parseInt(e.target.value) || 0;
     renderMarkers();
   });
+
+  document.getElementById('map-search').addEventListener('input', e => {
+    searchText = e.target.value.trim().toLowerCase();
+    renderMarkers();
+  });
+
+  document.querySelectorAll('[data-map-view]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      sectorMode = btn.dataset.mapView === 'sector';
+      document.querySelectorAll('[data-map-view]').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderMarkers();
+    });
+  });
+
+  document.getElementById('map-filter-dept').addEventListener('input', e => {
+    filterDept = e.target.value.trim();
+    renderMarkers();
+  });
+
+  document.getElementById('map-filter-commune').addEventListener('input', e => {
+    filterCommune = e.target.value.trim();
+    renderMarkers();
+  });
+
+  document.getElementById('map-filter-arrond').addEventListener('input', e => {
+    filterArrond = e.target.value.trim();
+    renderMarkers();
+  });
+
+  document.getElementById('map-filter-site').addEventListener('input', e => {
+    filterSite = e.target.value.trim();
+    renderMarkers();
+  });
+
+  document.getElementById('map-filter-controller').addEventListener('input', e => {
+    filterController = e.target.value.trim();
+    renderMarkers();
+  });
+
+  document.getElementById('map-show-rank').addEventListener('change', e => {
+    showRank = e.target.checked;
+    renderMarkers();
+  });
 }
 
 // ── Load data from API ────────────────────────────────────────────────────────
@@ -153,6 +236,7 @@ async function loadData() {
     document.getElementById('tb-info').textContent =
       `${START_DATE} \u2192 ${END_DATE}  |  Level: ${levelLabel}  |  E: ${e.length}  H: ${h.length} total`;
 
+    populateFilters([...ericssonData, ...huaweiData]);
     renderMarkers();
   } catch (err) {
     document.getElementById('map-status').textContent = 'Error: ' + err.message;
@@ -160,6 +244,44 @@ async function loadData() {
   } finally {
     document.getElementById('map-loading').style.display = 'none';
   }
+}
+
+// ── Populate filter dropdowns from loaded data ────────────────────────────────
+function populateFilters(allRows) {
+  const nameCol     = LEVEL === 'site_name' ? 'site_name' : 'cell_name';
+  const names       = [...new Set(allRows.map(r => r[nameCol]).filter(Boolean))].sort();
+  const depts       = [...new Set(allRows.map(r => r['departement']).filter(Boolean))].sort();
+  const communes    = [...new Set(allRows.map(r => r['commune']).filter(Boolean))].sort();
+  const arronds     = [...new Set(allRows.map(r => r['arrondissement']).filter(Boolean))].sort();
+  const sites       = [...new Set(allRows.map(r => r['site_name']).filter(Boolean))].sort();
+  const controllers = [...new Set(allRows.map(r => r['controller_name']).filter(Boolean))].sort();
+
+  const fill = (datalistId, values) => {
+    document.getElementById(datalistId).innerHTML =
+      values.map(v => `<option value="${v}">`).join('');
+  };
+
+  fill('map-search-list',       names);
+  fill('list-filter-dept',      depts);
+  fill('list-filter-commune',   communes);
+  fill('list-filter-arrond',    arronds);
+  fill('list-filter-site',      sites);
+  fill('list-filter-controller', controllers);
+}
+
+// ── Apply search + filters to a dataset ──────────────────────────────────────
+function applyFilters(rows) {
+  const nameCol = LEVEL === 'site_name' ? 'site_name' : 'cell_name';
+  const inc = (val, filter) => (val || '').toLowerCase().includes(filter.toLowerCase());
+  return rows.filter(row => {
+    if (searchText       && !inc(row[nameCol],            searchText))       return false;
+    if (filterDept       && !inc(row['departement'],      filterDept))       return false;
+    if (filterCommune    && !inc(row['commune'],          filterCommune))    return false;
+    if (filterArrond     && !inc(row['arrondissement'],   filterArrond))     return false;
+    if (filterSite       && !inc(row['site_name'],        filterSite))       return false;
+    if (filterController && !inc(row['controller_name'],  filterController)) return false;
+    return true;
+  });
 }
 
 async function fetchCells(script) {
@@ -178,42 +300,98 @@ async function fetchCells(script) {
   return json.data || [];
 }
 
-// ── Sector spread — fans co-located cells around their shared site point ──────
-// At cell level, multiple cells share the same site coordinates (same tower,
-// different antenna directions).  We offset each cell radially so all are
-// individually visible and hoverable on the map.
-//
-//   SPREAD_RADIUS ≈ 0.0025° ≈ ~275 m  — enough separation at zoom 12-14
-//   Angles start from North (–90°) and are distributed evenly around 360°.
-//
-function applySectorSpread(rows) {
-  if (LEVEL !== 'cell_name') return; // only needed at cell level
+// ── Sector beam drawing ───────────────────────────────────────────────────────
+const SECTOR_BEAM_DEG  = 65;   // beam width in degrees
+const SECTOR_RADIUS_M  = 400;  // sector arc radius in metres
+const SECTOR_ARC_STEPS = 18;   // polygon smoothness
 
-  // Group row indices by rounded coordinate key
-  const coordMap = new Map();
+// Approximate metre → degree conversions
+function mToDegLat(m)      { return m / 111320; }
+function mToDegLng(m, lat) { return m / (111320 * Math.cos(lat * Math.PI / 180)); }
+
+/**
+ * Build [lat, lng] polygon points for a sector wedge.
+ * azimuthDeg: telecom convention — 0 = North, 90 = East, clockwise.
+ */
+function sectorPoints(lat, lng, azimuthDeg, beamDeg, radiusM) {
+  const half   = beamDeg / 2;
+  const startA = azimuthDeg - half;
+  const endA   = azimuthDeg + half;
+  const pts    = [[lat, lng]]; // apex = tower location
+
+  for (let i = 0; i <= SECTOR_ARC_STEPS; i++) {
+    const deg = startA + (endA - startA) * (i / SECTOR_ARC_STEPS);
+    const rad = deg * Math.PI / 180;
+    // azimuth 0° = North (+lat), 90° = East (+lng)
+    pts.push([
+      lat + mToDegLat(radiusM) * Math.cos(rad),
+      lng + mToDegLng(radiusM, lat) * Math.sin(rad),
+    ]);
+  }
+
+  pts.push([lat, lng]); // close back to apex
+  return pts;
+}
+
+/**
+ * Return the midpoint of the largest angular gap in a sorted list of
+ * angles (degrees, 0–360).  Used to place virtual azimuths for cells
+ * that have no azimuth defined.
+ */
+function largestGapMidpoint(sorted) {
+  if (sorted.length === 0) return 0;
+  if (sorted.length === 1) return (sorted[0] + 180) % 360;
+
+  let maxGap = 0, bestStart = 0;
+  for (let i = 0; i < sorted.length; i++) {
+    const next = sorted[(i + 1) % sorted.length];
+    const gap  = ((next - sorted[i]) + 360) % 360;
+    if (gap > maxGap) { maxGap = gap; bestStart = sorted[i]; }
+  }
+  return (bestStart + maxGap / 2) % 360;
+}
+
+/**
+ * Assign row._azimuth to every cell row:
+ *   - defined azimuth → use it
+ *   - missing azimuth → auto-compute from the largest gap among siblings
+ *                       at the same site, so sectors never overlap
+ */
+function assignAzimuths(rows) {
+  if (LEVEL !== 'cell_name') return;
+
+  // Group by site_name (fall back to rounded coordinate key)
+  const siteMap = new Map();
   rows.forEach((row, i) => {
-    const lat = parseFloat(row['latitude']  ?? row['LATITUDE']  ?? '');
-    const lng = parseFloat(row['longitude'] ?? row['LONGITUDE'] ?? '');
-    if (!isFinite(lat) || !isFinite(lng) || lat === 0 || lng === 0) return;
-    const key = `${lat.toFixed(5)},${lng.toFixed(5)}`;
-    if (!coordMap.has(key)) coordMap.set(key, []);
-    coordMap.get(key).push(i);
+    const key = row['site_name'] ||
+      `${parseFloat(row['latitude']  || 0).toFixed(4)},` +
+      `${parseFloat(row['longitude'] || 0).toFixed(4)}`;
+    if (!siteMap.has(key)) siteMap.set(key, []);
+    siteMap.get(key).push(i);
   });
 
-  const SPREAD_RADIUS = 0.0002; // degrees (~22 m) — tight visual offset only
+  siteMap.forEach(indices => {
+    // Normalised defined azimuths for this site (sorted)
+    const defined = indices
+      .map(i => parseFloat(rows[i]['azimuth']))
+      .filter(v => isFinite(v))
+      .map(v => ((v % 360) + 360) % 360)
+      .sort((a, b) => a - b);
 
-  coordMap.forEach(indices => {
-    if (indices.length < 2) return; // no overlap, nothing to do
-    const n = indices.length;
-    indices.forEach((rowIdx, k) => {
-      // Start from North (–90°), spread evenly
-      const angleDeg = (360 / n) * k - 90;
-      const angleRad = angleDeg * Math.PI / 180;
-      const row = rows[rowIdx];
-      const baseLat = parseFloat(row['latitude']  ?? row['LATITUDE']);
-      const baseLng = parseFloat(row['longitude'] ?? row['LONGITUDE']);
-      row._lat = baseLat + SPREAD_RADIUS * Math.cos(angleRad);
-      row._lng = baseLng + SPREAD_RADIUS * Math.sin(angleRad);
+    // Working copy that grows as we assign virtual azimuths
+    const taken = [...defined];
+
+    indices.forEach(i => {
+      const raw = parseFloat(rows[i]['azimuth']);
+      if (isFinite(raw)) {
+        rows[i]._azimuth = ((raw % 360) + 360) % 360;
+      } else {
+        const az = largestGapMidpoint(taken);
+        rows[i]._azimuth = az;
+        // Register so the next unassigned cell at this site avoids it too
+        taken.push(az);
+        taken.sort((a, b) => a - b);
+      }
     });
   });
 }
@@ -225,20 +403,20 @@ function renderMarkers() {
 
   const kpiCfg = KPI_COLS[selectedKpi];
 
-  // Top N worst by CSR Failures count (highest = worst), same ranking as the bar chart
-  function applyTopN(rows) {
-    if (!topN) return rows; // 0 = all
-    return [...rows]
-      .sort((a, b) => (parseFloat(b['CSR_FAILURES']) || 0) - (parseFloat(a['CSR_FAILURES']) || 0))
-      .slice(0, topN);
+  // Filters → sort by CSR_FAILURES → topN
+  function prepareRows(rows) {
+    let r = applyFilters(rows);
+    r = [...r].sort((a, b) => (parseFloat(b['CSR_FAILURES']) || 0) - (parseFloat(a['CSR_FAILURES']) || 0));
+    if (topN) r = r.slice(0, topN);
+    return r;
   }
 
   const datasets = [];
-  if (mapVendor === 'BOTH' || mapVendor === 'ERICSSON') datasets.push({ rows: applyTopN(ericssonData), vendor: 'ERICSSON' });
-  if (mapVendor === 'BOTH' || mapVendor === 'HUAWEI')   datasets.push({ rows: applyTopN(huaweiData),   vendor: 'HUAWEI'   });
+  if (mapVendor === 'BOTH' || mapVendor === 'ERICSSON') datasets.push({ rows: prepareRows(ericssonData), vendor: 'ERICSSON' });
+  if (mapVendor === 'BOTH' || mapVendor === 'HUAWEI')   datasets.push({ rows: prepareRows(huaweiData),   vendor: 'HUAWEI'   });
 
-  // Apply sector spread to all datasets before plotting
-  datasets.forEach(({ rows }) => applySectorSpread(rows));
+  // Assign azimuths (real or auto-computed) for cell-level rendering
+  datasets.forEach(({ rows }) => assignAzimuths(rows));
 
   let plotted  = 0;
   let noCoords = 0;
@@ -247,10 +425,11 @@ function renderMarkers() {
   datasets.forEach(({ rows, vendor }) => {
     const kpiCol = vendor === 'ERICSSON' ? kpiCfg.ericsson : kpiCfg.huawei;
 
-    rows.forEach(row => {
-      // Use spread coordinates if set, otherwise fall back to raw coordinates
-      const lat = row._lat ?? parseFloat(row['latitude']  ?? row['LATITUDE']  ?? '');
-      const lng = row._lng ?? parseFloat(row['longitude'] ?? row['LONGITUDE'] ?? '');
+    rows.forEach((row, idx) => {
+      const rank = idx + 1;
+
+      const lat = parseFloat(row['latitude']  ?? row['LATITUDE']  ?? '');
+      const lng = parseFloat(row['longitude'] ?? row['LONGITUDE'] ?? '');
       if (!isFinite(lat) || !isFinite(lng) || lat === 0 || lng === 0) {
         noCoords++;
         return;
@@ -266,21 +445,71 @@ function renderMarkers() {
         color = isBad ? '#e74c3c' : '#2ecc71';
       }
 
-      const marker = L.circleMarker([lat, lng], {
-        radius:      7,
-        fillColor:   color,
-        color:       '#fff',
-        weight:      1.5,
-        fillOpacity: 0.85,
-      });
+      const borderColor = color === '#e74c3c' ? '#c0392b'
+                        : color === '#2ecc71' ? '#27ae60'
+                        : '#7f8c8d';
 
       const nameCol = LEVEL === 'site_name'      ? 'site_name'
                     : LEVEL === 'controller_name' ? 'controller_name'
                     : 'cell_name';
       const name = row[nameCol] || row['cell_name'] || row['site_name'] || 'Unknown';
 
-      marker.bindTooltip(buildTooltipHtml(row, vendor, name), { sticky: true, opacity: 0.97 });
-      marker.addTo(markersLayer);
+      const tooltipHtml = buildTooltipHtml(row, vendor, name);
+      let marker;
+
+      if (LEVEL === 'cell_name' && sectorMode) {
+        // ── Draw antenna sector beam ──────────────────────────────────────────
+        const az = row._azimuth ?? 0;
+        const R  = SECTOR_RADIUS_M;
+        const pts = sectorPoints(lat, lng, az, SECTOR_BEAM_DEG, R);
+
+        marker = L.polygon(pts, {
+          fillColor:   color,
+          color:       borderColor,
+          weight:      1.5,
+          fillOpacity: 0.65,
+          opacity:     0.9,
+        });
+
+        marker.bindTooltip(tooltipHtml, { sticky: true, opacity: 0.97 });
+        marker.addTo(markersLayer);
+
+        // Rank label: small circle at ~60 % of radius along azimuth direction
+        if (showRank) {
+          const rad      = az * Math.PI / 180;
+          const labelLat = lat + mToDegLat(R * 0.58) * Math.cos(rad);
+          const labelLng = lng + mToDegLng(R * 0.58, lat) * Math.sin(rad);
+          const rankIcon = L.divIcon({
+            className: '',
+            html: `<div style="background:${color};color:#fff;border:1.5px solid rgba(255,255,255,0.9);border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,0.5);line-height:1;pointer-events:none;">${rank}</div>`,
+            iconSize:   [18, 18],
+            iconAnchor: [9, 9],
+          });
+          L.marker([labelLat, labelLng], { icon: rankIcon, interactive: false }).addTo(markersLayer);
+        }
+
+      } else {
+        // ── Non-cell levels: keep simple circle markers ───────────────────────
+        if (showRank) {
+          const icon = L.divIcon({
+            className: '',
+            html: `<div style="background:${color};color:#fff;border:2px solid rgba(255,255,255,0.9);border-radius:50%;width:22px;height:22px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;box-shadow:0 1px 4px rgba(0,0,0,0.45);line-height:1">${rank}</div>`,
+            iconSize:   [22, 22],
+            iconAnchor: [11, 11],
+          });
+          marker = L.marker([lat, lng], { icon });
+        } else {
+          marker = L.circleMarker([lat, lng], {
+            radius:      7,
+            fillColor:   color,
+            color:       '#fff',
+            weight:      1.5,
+            fillOpacity: 0.85,
+          });
+        }
+        marker.bindTooltip(tooltipHtml, { sticky: true, opacity: 0.97 });
+        marker.addTo(markersLayer);
+      }
 
       latlngs.push([lat, lng]);
       plotted++;

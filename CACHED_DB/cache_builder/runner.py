@@ -157,7 +157,7 @@ def step3_load(tables: list = TABLES, start_date: str = None, end_date: str = No
     """Fetch data from MySQL and insert into DuckDB."""
     print(f"\n{DIVIDER}")
     logger.info("STEP 3 start: %s -> %s  batch_days=%s", start_date, end_date, batch_days)
-    print("  STEP 3 — Loading data from MySQL into DuckDB")
+    print("  STEP 3 - Loading data from MySQL into DuckDB")
     print(DIVIDER)
     kwargs = dict(start_date=start_date, end_date=end_date)
     if batch_days is not None:
@@ -221,7 +221,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--start",     default=None, help="Start date YYYY-MM-DD (step3)")
     parser.add_argument("--end",       default=None, help="End date   YYYY-MM-DD (step3)")
-    parser.add_argument("--days-back", type=int, default=None,
+    parser.add_argument("--days", type=int, default=None,
                         help="Load last N days ending today (step3, overrides --start/--end)")
     parser.add_argument("--batch-days", type=int, default=None,
                         help="Days per MySQL fetch batch (step3, default from config)")
@@ -234,9 +234,9 @@ if __name__ == "__main__":
     start_date = args.start
     end_date   = args.end
 
-    if args.days_back is not None:
+    if args.days is not None:
         end_date   = str(date.today())
-        start_date = str(date.today() - timedelta(days=args.days_back))
+        start_date = str(date.today() - timedelta(days=args.days - 1))
 
     # ── Dispatch ──────────────────────────────────────────────
     if args.step in ("step1", "all"):
@@ -248,7 +248,7 @@ if __name__ == "__main__":
                   step2_create)
 
     if args.step in ("step3", "all"):
-        _run_step("step3", "STEP 3 — Load data MySQL → DuckDB",
+        _run_step("step3", "STEP 3 - Load data MySQL -> DuckDB",
                   step3_load,
                   start_date=start_date, end_date=end_date, batch_days=args.batch_days)
 

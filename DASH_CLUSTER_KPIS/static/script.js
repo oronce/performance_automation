@@ -26,6 +26,14 @@ let specificDates = [];
 let compareDays   = [];
 let popupBatch    = null;
 let popupTimer    = null;
+let lastRenderState = null;    // { type: 'normal'|'compare', data, days? }
+
+const chartSettings = {
+    chartTitleSize:   16,  chartTitleBold:   false,  chartTitleCenter: false,
+    axisTitleSize:    12,  axisTitleBold:    false,
+    tickLabelSize:    11,  tickLabelBold:    false,
+    legendSize:       12,  legendBold:       false,
+};
 
 // =============================================================================
 // INIT
@@ -457,6 +465,81 @@ function setupEventListeners() {
 
     // Compare: apply
     document.getElementById('apply-compare').addEventListener('click', triggerCompare);
+
+    // Tick density: re-render charts when changed (no re-fetch needed)
+    document.getElementById('tick-density').addEventListener('change', () => {
+        if (!lastRenderState) return;
+        if (lastRenderState.type === 'compare') {
+            renderCompareCharts(lastRenderState.data, lastRenderState.days);
+        } else {
+            renderCharts(lastRenderState.data);
+        }
+    });
+
+    // Appearance panel toggle
+    const appearanceBtn   = document.getElementById('appearance-toggle-btn');
+    const appearancePanel = document.getElementById('appearance-panel');
+    appearanceBtn.addEventListener('click', () => {
+        const open = appearancePanel.style.display === 'none';
+        appearancePanel.style.display = open ? '' : 'none';
+        appearanceBtn.classList.toggle('active', open);
+    });
+
+    // Appearance sliders
+    const sliderMap = [
+        { id: 'fs-chart-title', valId: 'val-chart-title', key: 'chartTitleSize' },
+        { id: 'fs-axis-title',  valId: 'val-axis-title',  key: 'axisTitleSize'  },
+        { id: 'fs-tick-label',  valId: 'val-tick-label',  key: 'tickLabelSize'  },
+        { id: 'fs-legend',      valId: 'val-legend',      key: 'legendSize'     },
+    ];
+    sliderMap.forEach(({ id, valId, key }) => {
+        const slider = document.getElementById(id);
+        const valEl  = document.getElementById(valId);
+        slider.addEventListener('input', () => {
+            chartSettings[key] = parseInt(slider.value, 10);
+            valEl.textContent   = slider.value;
+            applyChartTitleSize();
+            if (lastRenderState) {
+                if (lastRenderState.type === 'compare') {
+                    renderCompareCharts(lastRenderState.data, lastRenderState.days);
+                } else {
+                    renderCharts(lastRenderState.data);
+                }
+            }
+        });
+    });
+
+    // Bold + align toggle buttons
+    const boldMap = [
+        { id: 'bold-chart-title',   key: 'chartTitleBold'   },
+        { id: 'center-chart-title', key: 'chartTitleCenter' },
+        { id: 'bold-axis-title',    key: 'axisTitleBold'    },
+        { id: 'bold-tick-label',    key: 'tickLabelBold'    },
+        { id: 'bold-legend',        key: 'legendBold'       },
+    ];
+    boldMap.forEach(({ id, key }) => {
+        const btn = document.getElementById(id);
+        btn.addEventListener('click', () => {
+            chartSettings[key] = !chartSettings[key];
+            btn.classList.toggle('active', chartSettings[key]);
+            applyChartTitleSize();
+            if (lastRenderState) {
+                if (lastRenderState.type === 'compare') {
+                    renderCompareCharts(lastRenderState.data, lastRenderState.days);
+                } else {
+                    renderCharts(lastRenderState.data);
+                }
+            }
+        });
+    });
+}
+
+function applyChartTitleSize() {
+    document.querySelectorAll('.chart-title').forEach(el => {
+        el.style.fontSize   = chartSettings.chartTitleSize + 'px';
+        el.style.fontWeight = chartSettings.chartTitleBold   ? '700'     : '600';
+        el.style.textAlign  = chartSettings.chartTitleCenter ? 'center'  : 'left';
+    });
 }
 
 function switchDateMode(mode) {
@@ -516,6 +599,7 @@ async function loadRangeData(startDate, endDate) {
         });
         if (result.success) {
             updateStatusBar(`${startDate} \u2192 ${endDate}`, result.total_records);
+            lastRenderState = { type: 'normal', data: result.data };
             renderCharts(result.data);
         }
     } catch (err) {
@@ -538,6 +622,7 @@ async function loadSpecificData(dates) {
         });
         if (result.success) {
             updateStatusBar(dates.join(', '), result.total_records);
+            lastRenderState = { type: 'normal', data: result.data };
             renderCharts(result.data);
         }
     } catch (err) {
@@ -576,6 +661,7 @@ async function triggerCompare() {
             const vendorLabel = vendorCfg?.label || currentVendor;
             document.getElementById('current-range').textContent =
                 `Comparing ${filled.length} days | ${techLabel} | ${vendorLabel} | ${batchLabel} | ${result.total_records} records`;
+            lastRenderState = { type: 'compare', data: result.data, days: filled };
             renderCompareCharts(result.data, filled);
         }
     } catch (err) {
@@ -636,6 +722,7 @@ function renderCharts(data) {
             options: chartOptions(title, isDaily, labelData)
         });
     });
+    applyChartTitleSize();
 }
 
 // =============================================================================
@@ -692,6 +779,7 @@ function renderCompareCharts(data, days) {
             options: chartOptions(title, false, allTimes.map(t => ({ date: '', time: t, full: t })))
         });
     });
+    applyChartTitleSize();
 }
 
 // =============================================================================
@@ -702,10 +790,20 @@ function createChartCard(title, threshold, idx) {
     const card  = document.createElement('div');
     card.className = 'chart-card';
     const badge = threshold !== null
-        ? `<span class="threshold-info">Threshold: ${threshold}</span>` : '';
+        ? `<span class="threshold-badge">Target: ${threshold}</span>` : '';
     card.innerHTML = `
-        <h3 class="chart-title">${title} ${badge}</h3>
+        <div class="chart-card-header">
+            <h3 class="chart-title">${title} ${badge}</h3>
+            <button class="expand-btn" title="Expand / Collapse">&#x26F6;</button>
+        </div>
         <div class="chart-wrapper"><canvas id="chart-${idx}"></canvas></div>`;
+
+    card.querySelector('.expand-btn').addEventListener('click', () => {
+        card.classList.toggle('expanded');
+        const chart = charts[`chart-${idx}`];
+        if (chart) chart.resize();
+    });
+
     return card;
 }
 
@@ -720,13 +818,36 @@ function thresholdDataset(threshold, length) {
     };
 }
 
+// Returns the interval in hours for boundary-aligned mode (non-auto only)
+function getHourInterval() {
+    const perDay = parseInt(document.getElementById('tick-density')?.value, 10) || 4;
+    return Math.max(1, 24 / perDay);
+}
+
+// Original auto maxTicksLimit — let Chart.js handle skipping naturally
+function calcAutoMaxTicks(isDaily, labelData) {
+    if (isDaily) return Math.min(labelData.length, 31);
+    const numDates = new Set(labelData.map(l => l.date).filter(Boolean)).size || 1;
+    if (numDates <= 1)  return 24;
+    if (numDates <= 3)  return numDates * 8;
+    if (numDates <= 7)  return numDates * 4;
+    if (numDates <= 14) return numDates * 3;
+    return numDates * 2;
+}
+
 function chartOptions(title, isDaily, labelData) {
+    const density    = document.getElementById('tick-density')?.value || 'auto';
+    const useAuto    = density === 'auto';
+
     return {
         responsive: true,
         maintainAspectRatio: false,
         interaction: { mode: 'index', intersect: false },
         plugins: {
-            legend: { position: 'bottom', labels: { usePointStyle: true, padding: 12 } },
+            legend: {
+                position: 'bottom',
+                labels: { usePointStyle: true, padding: 12, font: { size: chartSettings.legendSize, weight: chartSettings.legendBold ? '700' : 'normal' } }
+            },
             tooltip: {
                 callbacks: {
                     label: ctx => {
@@ -738,10 +859,23 @@ function chartOptions(title, isDaily, labelData) {
         },
         scales: {
             x: {
-                title: { display: true, text: isDaily ? 'Date' : 'Date / Time' },
+                title: { display: true, text: isDaily ? 'Date' : 'Date / Time', font: { size: chartSettings.axisTitleSize, weight: chartSettings.axisTitleBold ? '700' : 'normal' } },
+                // Boundary filter only when user explicitly picks a density
+                afterBuildTicks: (!isDaily && !useAuto) ? (axis) => {
+                    const interval = getHourInterval();
+                    axis.ticks = axis.ticks.filter(tick => {
+                        const entry = labelData[tick.value];
+                        if (!entry || !entry.time) return false;
+                        const h = parseInt(entry.time.split(':')[0], 10);
+                        const m = parseInt(entry.time.split(':')[1], 10);
+                        return m === 0 && h % interval === 0;
+                    });
+                } : undefined,
                 ticks: {
-                    maxRotation: 45, minRotation: 45, autoSkip: true,
-                    maxTicksLimit: isDaily ? 14 : 48,
+                    maxRotation: 45, minRotation: 45,
+                    autoSkip: useAuto || isDaily,
+                    maxTicksLimit: useAuto || isDaily ? calcAutoMaxTicks(isDaily, labelData) : undefined,
+                    font: { size: chartSettings.tickLabelSize, weight: chartSettings.tickLabelBold ? '700' : 'normal' },
                     callback: function(tickValue, index, ticks) {
                         const cur = labelData[tickValue];
                         if (!cur) return '';
@@ -754,7 +888,11 @@ function chartOptions(title, isDaily, labelData) {
                     }
                 }
             },
-            y: { title: { display: true, text: title }, beginAtZero: false }
+            y: {
+                title: { display: true, text: title, font: { size: chartSettings.axisTitleSize, weight: chartSettings.axisTitleBold ? '700' : 'normal' } },
+                ticks: { font: { size: chartSettings.tickLabelSize, weight: chartSettings.tickLabelBold ? '700' : 'normal' } },
+                beginAtZero: false
+            }
         }
     };
 }

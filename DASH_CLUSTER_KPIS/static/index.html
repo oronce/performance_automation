@@ -85,6 +85,18 @@
                         <button class="btn btn-quick" data-days="30">Last 30 Days</button>
                     </div>
                 </div>
+
+                <div class="filter-group">
+                    <label>X-Axis Ticks:</label>
+                    <select id="tick-density" class="select-input" title="Controls how many tick labels appear on the x-axis">
+                        <option value="auto">Auto</option>
+                        <option value="2">2 / day</option>
+                        <option value="4">4 / day</option>
+                        <option value="6">6 / day</option>
+                        <option value="12">Every 2h</option>
+                        <option value="24">Every 1h</option>
+                    </select>
+                </div>
             </div>
 
             <!-- Row 2a: Normal date mode (range / specific) — hidden in compare -->
@@ -138,6 +150,36 @@
             <div class="filter-info">
                 <span id="current-range">Loading...</span>
                 <span id="error-message" class="error-msg"></span>
+                <button id="appearance-toggle-btn" class="btn-appearance-toggle" title="Chart appearance settings">⚙ Appearance</button>
+            </div>
+
+            <!-- Collapsible appearance panel -->
+            <div id="appearance-panel" class="appearance-panel" style="display:none;">
+                <div class="appearance-grid">
+                    <div class="appearance-item">
+                        <label>Chart Title <span class="size-val" id="val-chart-title">16</span>px</label>
+                        <input type="range" id="fs-chart-title" min="10" max="100" value="16" class="appearance-slider">
+                        <div style="display:flex;gap:6px;">
+                            <button class="bold-btn" id="bold-chart-title" title="Toggle bold">B</button>
+                            <button class="bold-btn" id="center-chart-title" title="Toggle center align">&#8596; Center</button>
+                        </div>
+                    </div>
+                    <div class="appearance-item">
+                        <label>Axis Title <span class="size-val" id="val-axis-title">12</span>px</label>
+                        <input type="range" id="fs-axis-title" min="8" max="100" value="12" class="appearance-slider">
+                        <button class="bold-btn" id="bold-axis-title" title="Toggle bold">B</button>
+                    </div>
+                    <div class="appearance-item">
+                        <label>Tick Labels <span class="size-val" id="val-tick-label">11</span>px</label>
+                        <input type="range" id="fs-tick-label" min="7" max="100" value="11" class="appearance-slider">
+                        <button class="bold-btn" id="bold-tick-label" title="Toggle bold">B</button>
+                    </div>
+                    <div class="appearance-item">
+                        <label>Legend <span class="size-val" id="val-legend">12</span>px</label>
+                        <input type="range" id="fs-legend" min="8" max="100" value="12" class="appearance-slider">
+                        <button class="bold-btn" id="bold-legend" title="Toggle bold">B</button>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -151,6 +193,6 @@
         <div id="charts-container" class="charts-grid"></div>
     </div>
 
-    <script src="/static/script.js?v=8"></script>
+    <script src="/static/script.js?v=14"></script>
 </body>
 </html>

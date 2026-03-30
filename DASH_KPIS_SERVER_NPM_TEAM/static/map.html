@@ -173,14 +173,19 @@
       background: rgba(22,33,62,0.97) !important;
       border: 1px solid #3498db !important;
       color: #eee !important;
-      font-size: 13px;
-      padding: 8px 12px;
-      line-height: 1.7;
+      font-size: 11px;
+      padding: 6px 10px;
+      line-height: 1.5;
       border-radius: 6px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.4) !important;
     }
 
     .leaflet-tooltip::before { border-right-color: #3498db !important; }
+
+    /* Make the scrollbar subtle inside tooltip */
+    .leaflet-tooltip ::-webkit-scrollbar { width: 4px; }
+    .leaflet-tooltip ::-webkit-scrollbar-track { background: transparent; }
+    .leaflet-tooltip ::-webkit-scrollbar-thumb { background: #3498db; border-radius: 2px; }
   </style>
 </head>
 <body>
@@ -213,6 +218,12 @@
       <button class="tb-btn" data-map-vendor="HUAWEI">Huawei</button>
     </div>
 
+    <div class="tb-group" id="grp-view-mode">
+      <span class="tb-label">View</span>
+      <button class="tb-btn active" data-map-view="sector">Sectors</button>
+      <button class="tb-btn" data-map-view="dots">Dots</button>
+    </div>
+
     <div class="tb-group">
       <span class="tb-label">Top N <span style="color:#7f8c8d;font-size:10px;font-weight:400;">(by CSR Failures)</span></span>
       <select class="tb-select" id="top-n-select">
@@ -223,6 +234,52 @@
         <option value="100">Top 100</option>
         <option value="200">Top 200</option>
       </select>
+    </div>
+
+    <div class="tb-group">
+      <span class="tb-label">Search</span>
+      <input type="text" id="map-search" class="tb-input" placeholder="name..." style="width:150px;" list="map-search-list" autocomplete="off">
+      <datalist id="map-search-list"></datalist>
+    </div>
+
+    <div class="tb-group" id="grp-filter-dept">
+      <span class="tb-label">Département</span>
+      <input type="text" class="tb-input" id="map-filter-dept" placeholder="All depts"
+             list="list-filter-dept" autocomplete="off" style="width:130px;">
+      <datalist id="list-filter-dept"></datalist>
+    </div>
+
+    <div class="tb-group" id="grp-filter-commune">
+      <span class="tb-label">Commune</span>
+      <input type="text" class="tb-input" id="map-filter-commune" placeholder="All communes"
+             list="list-filter-commune" autocomplete="off" style="width:130px;">
+      <datalist id="list-filter-commune"></datalist>
+    </div>
+
+    <div class="tb-group" id="grp-filter-arrond">
+      <span class="tb-label">Arrondissement</span>
+      <input type="text" class="tb-input" id="map-filter-arrond" placeholder="All arrond."
+             list="list-filter-arrond" autocomplete="off" style="width:140px;">
+      <datalist id="list-filter-arrond"></datalist>
+    </div>
+
+    <div class="tb-group" id="grp-filter-site">
+      <span class="tb-label">Site</span>
+      <input type="text" class="tb-input" id="map-filter-site" placeholder="All sites"
+             list="list-filter-site" autocomplete="off" style="width:120px;">
+      <datalist id="list-filter-site"></datalist>
+    </div>
+
+    <div class="tb-group" id="grp-filter-controller">
+      <span class="tb-label">Controller</span>
+      <input type="text" class="tb-input" id="map-filter-controller" placeholder="All controllers"
+             list="list-filter-controller" autocomplete="off" style="width:140px;">
+      <datalist id="list-filter-controller"></datalist>
+    </div>
+
+    <div class="tb-group">
+      <span class="tb-label">Show Rank</span>
+      <input type="checkbox" id="map-show-rank" style="cursor:pointer;width:16px;height:16px;vertical-align:middle;">
     </div>
 
     <div class="tb-group">

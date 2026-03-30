@@ -106,6 +106,27 @@ _HUAWEI_2G_CLUSTER_2 = [
     'BORI1','KAND82','SANDI1','BEMBE1','KOMIG1','PAR501','DOUGO1'
 ]
 
+
+_ERICSSON_2G_SD_TOP30_WORST_CELL =[
+    'KABOU2','KABOU1','ONKLO1','ALAFI1','OWOLA1','GOGOR2','TECTI1','KOKOR2','BILKO3','OKEOW2','OWOLA3','SAVE53','TOKO2','POBE3','OUAKE2','MANI22','AGBAD1','AFLAN2','ZAGNA1','SEHOU2','TOWE3','NIEKE2','KILIB2','TOUI2','KEDEK2','DJOU62','FIROU2','NATI21','BIGUI2','BIGUI3'
+]
+
+# _HUAWEI_2G_TAC_LAC_SECOND_BATCH =[
+#     'ANGAR1','ANGAR2','ANGAR3','ARBON1','ARBON2','ARBON3','BANGO1','BANGO2','BANGO3','BEROU1','BEROU2','BEROU3','BOROD1','BOROD2','BOROD3','DERAC1','DERAC2','DERAC3','FOBOK1','FOBOK2','FOBOK3','DFOUNO1','DFOUNO2','DFOUNO3','FOUNO1','FOUNO2','FOUNO3','GANRO1','GANRO2','GANRO3','GBEKU1','GBEKU2','GBEKU3','GBERO1','GBERO2','GBERO3','DGOGOU1','DGOGOU2','DGOGOU3','GOGOU1','GOGOU2','GOGOU3','GUESSB1','GUESSB2','GUESSB3','KABO1','KABO2','KABO3','DKEROU2','DKEROU3','KEROU1','KEROU2','KEROU3','KOMPA1','KOMPA2','KOMPA3','KOUTA1','KOUTA2','KOUTA3','LIBOU1','LIBOU2','LIBOU3','MOLLA1','MOLLA2','MOLLA3','OLOUGB1','OLOUGB2','OLOUGB3','OUARA1','OUARA2','OUARA3','PAR171','PAR172','PAR173','DPEHUN1','DPEHUN2','DPEHUN3','PEHUN1','PEHUN2','PEHUN3','PETIT1','PETIT2','PETIT3','SAHAD1','SAHAD2','SAHAD3','DSERA1','DSERA2','SERAR1','SERAR2','SERAR3','SIKKI1','SIKKI2','SIKKI3','SOKOT1','SOKOT2','SOKOT3','SONNO1','SONNO2','SONNO3','SONTO1','SONTO2','SONTO3','TOBRE1','TOBRE2','TOBRE3','WOBAD1','WOBAD2','WOBAD3','WORIA1','WORIA2','WORIA3'
+# ]
+
+_HUAWEI_2G_TAC_LAC_SECOND_BATCH =[
+    'ANGAR1','ANGAR2','ANGAR3','ARBON1','ARBON2','ARBON3','BAGOU1','BAGOU2','BAGOU3','DBAGOU1','DBAGOU3','BANGO1','BANGO2','BANGO3','BERKO1','BERKO2','BERKO3','BEROU1','BEROU2','BEROU3','BOROD1','BOROD2','BOROD3','DERAC1','DERAC2','DERAC3','FOBOK1','FOBOK2','FOBOK3','DFOUNO1','DFOUNO2','DFOUNO3','FOUNO1','FOUNO2','FOUNO3','GANRO1','GANRO2','GANRO3','GBASS1','GBASS2','GBASS3','GBEKU1','GBEKU2','GBEKU3','GBERO1','GBERO2','GBERO3','DGOGOU1','DGOGOU2','DGOGOU3','GOGOU1','GOGOU2','GOGOU3','GUESSB1','GUESSB2','GUESSB3','KABO1','KABO2','KABO3','DKEROU2','DKEROU3','KEROU1','KEROU2','KEROU3','KOMPA1','KOMPA2','KOMPA3','KOSSO1','KOSSO2','KOSSO3','KOUTA1','KOUTA2','KOUTA3','DLIBA3','LIBAN1','LIBAN2','LIBAN3','LIBOU1','LIBOU2','LIBOU3','LOUG21','LOUG22','LOUG23','MOLLA1','MOLLA2','MOLLA3','OLOUGB1','OLOUGB2','OLOUGB3','OUARA1','OUARA2','OUARA3','PAR171','PAR172','PAR173','DPEHUN1','DPEHUN2','DPEHUN3','PEHUN1','PEHUN2','PEHUN3','PETIT1','PETIT2','PETIT3','SAHAD1','SAHAD2','SAHAD3','SAORE1','SAORE2','SAORE3','DSERA1','DSERA2','SERAR1','SERAR2','SERAR3','SIKKI1','SIKKI2','SIKKI3','SOKOT1','SOKOT2','SOKOT3','SONNO1','SONNO2','SONNO3','SONTO1','SONTO2','SONTO3','TANKO1','TANKO2','TANKO3','TOBRE1','TOBRE2','TOBRE3','WOBAD1','WOBAD2','WOBAD3','WORIA1','WORIA2','WORIA3','YARA1','YARA2','YARA3'
+]
+
+##
+
+
+
+_ERICSSON_2G_ACTION_27_MARCH_2_SITE =[
+    'KOUAT1','KOUAT2','KOUAT3','TCHAG1','TCHAG2','TCHAG3'
+]
+
 # --- Ericsson 2G ---
 # Add batches when ready:
 # _ERICSSON_2G_ZONE_NORTH = ['CELL1', ...]
@@ -229,6 +250,18 @@ TECHNOLOGIES = {
                         "label": "ERICSSON 1000 Plus Cell Improvement ",
                         "cells": _ERICSSON_2G_10_MARS_1000Plus_Cell,
                     },
+                     "cluster_3": {
+                        "label": "ERICSSON_2G_SD_TOP30_WORST_CELL",
+                        "cells": _ERICSSON_2G_SD_TOP30_WORST_CELL,
+                    },
+                    "cluster_4": {
+                        "label": "_ERICSSON_2G_ACTION_27_MARCH_2_SITE",
+                        "cells": _ERICSSON_2G_ACTION_27_MARCH_2_SITE,
+                    },
+                     "cluster_5": {
+                        "label": "_ERICSSON_2G_LAC_TAC_BATCH2",
+                        "cells": ['ADJID1','ADJID2','ADJID3','ADJI1','ADJI2','ADJI3','AFLAN1','AFLAN2','AFLAN3','AHITO1','AHITO2','AHITO3','AHOME1','AHOME2','AHOME3','AVOGB1','AVOGB2','AVOGB3','AZOV31','AZOV32','AZOV33','BOH161','BOH162','BOH163','DBOH161','DBOH162','DAN1','DAN2','DAN3','DDAN1','DDJAKO1','DDJAKO2','DJAKO1','DJAKO2','DJAKO3','DOHOU1','DOHOU2','DOHOU3','DOME1','DOME2','DOME3','DONTA1','DONTA2','DONTA3','DOUME1','DOUME2','DOUME3','FONPA1','FONPA2','FONPA3','FONKP1','FONKP2','FONKP3','HLASS1','HLASS2','HLASS3','HOUN1','HOUN2','HOUN3','KOHOU1','KOHOU2','KOHOU3','KOUSS1','KOUSS2','KOUSS3','KPAKP1','KPAKP2','KPAKP3','KPOBA1','KPOBA2','KPOBA3','KPOZO1','KPOZO2','KPOZO3','LAGBA1','LAGBA2','LAGBA3','LEGO1','LEGO2','LEGO3','MANSO1','MANSO2','MANSO3','MASSA1','MASSA2','MASSA3','MONK1','MONK2','MONK3','OUANS1','OUANS2','OUANS3','SETTO1','SETTO2','SETTO3','TANVE1','TANVE2','TANVE3','TCHAK1','TCHAK2','TCHAK3','TIND21','TIND22','TIND23','YAGBA1','YAGBA2','YAGBA3','ZATAN1','ZATAN2','ZATAN3','ZAHLA1','ZAHLA2','ZAHLA3','ZOUN1','ZOUN2','ZOUN3'],
+                    },
                 },
             },
 
@@ -301,6 +334,10 @@ TECHNOLOGIES = {
                      "cluster_3": {
                         "label": "29 CELL ABDEL_AZIZ",
                         "cells": _HUAWEI_2G_CELL_29_MARCH,
+                    },
+                     "cluster_4": {
+                        "label": "2G NEW BATCH TAC LAC",
+                        "cells": _HUAWEI_2G_TAC_LAC_SECOND_BATCH,
                     },
                 },
             },
@@ -381,9 +418,22 @@ TECHNOLOGIES = {
 
                 # Add batches here when ready:
                 # "zone_north": {"label": "North Zone", "cells": _ERICSSON_3G_ZONE_NORTH},
+             
+
+
                 "batches": {
-                    "lac_tac_change": {"label": "LAC TAC Change", "cells": _ERICSSON_3G_CLUSTER_1},
+                     "cluster_1": {
+                        "label": "LAC TAC CHANGE",
+                        "cells": _ERICSSON_3G_CLUSTER_1,
+                    },
+                     "cluster_2": {
+                        "label": "LAC TAC CHANGE V2",
+                        "cells": ['UDONTA7','UDONTA8','UDONTA9'],
+                    },
+                    
                 },
+
+
             },
         },
     },
@@ -474,9 +524,19 @@ TECHNOLOGIES = {
 
                 # Add batches here when ready:
                 # "zone_north": {"label": "North Zone", "cells": _ERICSSON_4G_ZONE_NORTH},
-                "batches": {
-                    "lac_tac_change": {"label": "LAC TAC Change", "cells": _ERICSSON_4G_CLUSTER_1},
+            
+             
+                    "batches": {
+                        "cluster_1": {
+                            "label": "LAC TAC CHANGE",
+                            "cells": _ERICSSON_4G_CLUSTER_1,
+                        },
+                        "cluster_2": {
+                            "label": "LAC TAC CHANGE V2",
+                            "cells":  ['LFONKP1','LFONKP2','LFONKP3','LKOHOU1','LKOHOU2','LKOHOU3','LKPAKP1','LKPAKP2','LKPAKP3','LKPAKP7','LKPAKP8','LKPAKP9','LKPAKPA','LKPAKPB','LKPAKPC','LMANSO1','LMANSO2','LMANSO3','LYAGBA1','LYAGBA2','LYAGBA3','LZATANT1','LZATANT2','LZATANT3','LZATANT7','LZATANT8','LZATANT9','LZATANTA','LZATANTB','LZATANTC']
+                        },
                 },
+
             },
         },
     },

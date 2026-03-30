@@ -10,7 +10,14 @@ WITH
         (SUM(CELL_KPI_TCH_REQ_SIG) + SUM(CELL_KPI_TCH_ASS_REQ_TRAF) + SUM(CELL_KPI_TCH_HO_REQ_TRAF)) *
         (1 - (((SUM(CELL_KPI_TCH_DROPS_SIG) + SUM(CELL_KPI_TCH_STATIC_DROPS_TRAF) + SUM(CELL_KPI_TCH_HO_DROPS_TRAF)))
             / ((SUM(CELL_KPI_TCH_SUCC_SIG) + SUM(CELL_KPI_TCH_ASS_SUCC_TRAF) + SUM(CELL_KPI_TCH_HO_SUCC_TRAF)))))
-      AS CSSR_HUAWEI
+      AS CSSR_HUAWEI,
+
+         -- 2G Availability Rate - HUAWEI
+      100.0 * COALESCE(SUM(CAST(CELL_KPI_TCH_AVAIL_NUM AS DOUBLE)), 0) /
+        NULLIF(COALESCE(SUM(CAST(CELL_KPI_TCH_CFG_NUM AS DOUBLE)), 0), 0) AS CELL_AVAILABILITY_RATE_HUAWEI,
+
+
+
     FROM hourly_huawei_2g_all_counters h
     WHERE h.date BETWEEN '{start_date}' AND '{end_date}'
     GROUP BY h.date
@@ -39,7 +46,13 @@ WITH
               / (SUM(CAST(TFCASSALL AS DOUBLE)) + SUM(CAST(THCASSALL AS DOUBLE))
                 + SUM(CAST(TFCASSALLSUB AS DOUBLE)) + SUM(CAST(THCASSALLSUB AS DOUBLE)))
             ))
-      END AS CSSR_ERICSSON
+      END AS CSSR_ERICSSON,
+
+            -- 2G Cell Availability Rate - ERICSSON
+      100.0 - (100.0 * COALESCE(SUM(CAST(TDWNACC AS DOUBLE)), 0) /
+        NULLIF(COALESCE(SUM(CAST(TDWNSCAN AS DOUBLE)), 0), 0)) AS CELL_AVAILABILITY_RATE_ERICSSON,
+
+
     FROM hourly_ericsson_arcep_2g_counters e
     WHERE e.DATE BETWEEN '{start_date}' AND '{end_date}'
     GROUP BY e.DATE
@@ -84,7 +97,11 @@ SELECT
     epl.packet_loss_pct_ericsson,
     hpl.packet_loss_count_huawei,
     hpl.packet_loss_pct_huawei,
-    COALESCE(epl.packet_loss_count_ericsson, 0) + COALESCE(hpl.packet_loss_count_huawei, 0) AS packet_loss_count_total
+    COALESCE(epl.packet_loss_count_ericsson, 0) + COALESCE(hpl.packet_loss_count_huawei, 0) AS packet_loss_count_total,
+
+    -- Cell Availability
+    e2g.CELL_AVAILABILITY_RATE_ERICSSON,
+    h2g.CELL_AVAILABILITY_RATE_HUAWEI
 
 FROM HUAWEI_2G_KPI h2g
 LEFT JOIN ERICSSON_2G_KPI     e2g ON h2g.date = e2g.DATE
