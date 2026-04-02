@@ -2,7 +2,7 @@
 KPI Dashboard Server - FastAPI Backend
 Run with: uvicorn main:app --reload --port 8000
 """
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Header, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from datetime import datetime, timedelta
@@ -20,6 +20,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "sql"))
 from sql.worst_cell_generator import generate_worst_cell_sql
 
 app = FastAPI(title="KPI Dashboard API")
+
+# CA_LOCK — CSSR Analysis password. Change CA_PASSWORD to rotate; old sessions auto-expire.
+CA_PASSWORD = "NPM_TEAM"
+def ca_auth(x_ca_token: str = Header(None)):
+    if x_ca_token != CA_PASSWORD:
+        raise HTTPException(status_code=401, detail="Unauthorized")
+# /CA_LOCK
 
 # Serve static files
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
@@ -268,7 +275,7 @@ async def get_default_dates():
     }
 
 
-@app.get("/api/worst-cells")
+@app.get("/api/worst-cells", dependencies=[Depends(ca_auth)])
 async def get_worst_cells(
     script: str = Query(..., description="2g_ericsson_worst_cell | 2g_huawei_worst_cell"),
     start_date: str = Query(..., description="Start date YYYY-MM-DD"),
@@ -311,7 +318,7 @@ async def get_worst_cells(
         raise HTTPException(status_code=500, detail=f"Server error: {str(e)}")
 
 
-@app.get("/api/failure-breakdown")
+@app.get("/api/failure-breakdown", dependencies=[Depends(ca_auth)])
 async def get_failure_breakdown(
     script: str = Query(..., description="2g_ericsson_failure_breakdown | 2g_huawei_failure_breakdown"),
     start_date: str = Query(..., description="Start date YYYY-MM-DD"),

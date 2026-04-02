@@ -1,0 +1,203 @@
+================================================================================
+   HOW TO CONNECT TO SAP IQ (Sybase IQ) FROM PYTHON ON WINDOWS
+   Server: etbjeniq1.moov.bj / 10.22.65.52 | DB: dwhdb
+================================================================================
+
+OVERVIEW
+--------
+SAP IQ does not have a simple pip-installable Python connector.
+You need a real ODBC driver DLL on your machine. We use the
+Progress DataDirect ODBC Sybase IQ Wire Protocol driver (free download).
+
+
+--------------------------------------------------------------------------------
+STEP 1 — Download the DataDirect Driver
+--------------------------------------------------------------------------------
+1. Go to the Progress DataDirect website and search for:
+       "DataDirect ODBC Sybase IQ Windows 64-bit"
+
+   The file you need is named something like:
+       PROGRESS_DATADIRECT_ODBC_SYBASEIQ_WIN_64.zip
+
+2. Extract the zip. Inside you will find:
+       DriverModules/
+           PROGRESS_DATADIRECT_ODBC_COMMON_8.0.0_WIN_64_INSTALL.iam.zip
+           PROGRESS_DATADIRECT_ODBC_DM_8.0.0_WIN_64_INSTALL.iam.zip
+           PROGRESS_DATADIRECT_ODBC_SYBASEIQ_8.0.2_WIN_64_INSTALL.iam.zip
+       PROGRESS_DATADIRECT_ODBC_8.0_WIN_64_INSTALL.exe  <-- installer (needs Java 11+)
+
+   NOTE: The .exe installer requires Java 11 or higher to run.
+   If you don't have Java 11+, skip to STEP 2 (manual extraction).
+
+
+--------------------------------------------------------------------------------
+STEP 2 — Extract Driver DLLs Manually (no installer needed)
+--------------------------------------------------------------------------------
+The actual DLL files are buried inside the .iam.zip files.
+Run this Python script to extract them:
+
+    import zipfile, os
+
+    base = r'C:\path\to\PROGRESS_DATADIRECT_ODBC_SYBASEIQ_WIN_64\DriverModules'
+    dest = r'C:\DataDirect\SybaseIQ'
+    os.makedirs(dest, exist_ok=True)
+
+    # --- Extract main driver DLLs (ddsyiq28.dll, ddsyiq28r.dll) ---
+    syiq_jar_path = (
+        '$IA_MERGE_RESOURCES$/SybaseIQ_1758611588723/'
+        '3aeb15a444fc6a4450269dfadf0ad389/'
+        'sybaseiq_win64.manifest_zg_ia_sf.jar'
+    )
+    with zipfile.ZipFile(base + '/PROGRESS_DATADIRECT_ODBC_SYBASEIQ_8.0.2_WIN_64_INSTALL.iam.zip') as z:
+        z.extract(syiq_jar_path, base + '/extracted')
+
+    with zipfile.ZipFile(base + '/extracted/' + syiq_jar_path) as j:
+        for name in j.namelist():
+            if name.endswith('.dll'):
+                fname = os.path.basename(name)
+                with open(dest + '/' + fname, 'wb') as f:
+                    f.write(j.read(name))
+                print(f'Extracted: {fname}')
+
+    # --- Extract ICU dependency DLL (ddicu.dll) ---
+    common_jar_path = (
+        '$IA_MERGE_RESOURCES$/odbc_common_win64_1758640644836/'
+        '3aeb15a444fc6a4450269dfadf0ad389/'
+        'odbc_common_win64.manifest_zg_ia_sf.jar'
+    )
+    with zipfile.ZipFile(base + '/PROGRESS_DATADIRECT_ODBC_COMMON_8.0.0_WIN_64_INSTALL.iam.zip') as z:
+        z.extract(common_jar_path, base + '/extracted_common')
+
+    with zipfile.ZipFile(base + '/extracted_common/' + common_jar_path) as j:
+        for name in j.namelist():
+            if name.endswith('.dll'):
+                fname = os.path.basename(name)
+                with open(dest + '/' + fname, 'wb') as f:
+                    f.write(j.read(name))
+                print(f'Extracted: {fname}')
+
+After running this script you should have in C:\DataDirect\SybaseIQ\:
+    ddsyiq28.dll       <-- main driver
+    ddsyiq28r.dll      <-- resource file
+    ddicu.dll          <-- unicode dependency
+
+
+--------------------------------------------------------------------------------
+STEP 3 — Register the ODBC Driver in Windows Registry
+--------------------------------------------------------------------------------
+Open Command Prompt AS ADMINISTRATOR and run these 3 commands:
+
+    reg add "HKLM\SOFTWARE\ODBC\ODBCINST.INI\DataDirect 8.0 Sybase IQ" /v Driver /t REG_SZ /d "C:\DataDirect\SybaseIQ\ddsyiq28.dll" /f
+
+    reg add "HKLM\SOFTWARE\ODBC\ODBCINST.INI\DataDirect 8.0 Sybase IQ" /v Setup /t REG_SZ /d "C:\DataDirect\SybaseIQ\ddsyiq28.dll" /f
+
+    reg add "HKLM\SOFTWARE\ODBC\ODBCINST.INI\ODBC Drivers" /v "DataDirect 8.0 Sybase IQ" /t REG_SZ /d "Installed" /f
+
+Each command should respond with: "The operation completed successfully."
+
+To verify the driver is registered, run in Python:
+    import pyodbc
+    print(pyodbc.drivers())
+    # You should see "DataDirect 8.0 Sybase IQ" in the list
+
+
+--------------------------------------------------------------------------------
+STEP 4 — Create the Interfaces File (sql.ini)
+--------------------------------------------------------------------------------
+The DataDirect driver needs a Sybase-style interfaces file to resolve
+the server name to an IP address and port.
+
+On Windows, this file is called sql.ini (NOT the Unix "interfaces" file).
+
+Create the folder and file:
+
+    import os
+    os.makedirs(r'C:\DataDirect\SybaseIQ\ini', exist_ok=True)
+
+    with open(r'C:\DataDirect\SybaseIQ\ini\sql.ini', 'w') as f:
+        f.write('[dwhdb]\n')
+        f.write('master=tcp,10.22.65.52,2640\n')
+        f.write('query=tcp,10.22.65.52,2640\n')
+
+Format explanation:
+    [dwhdb]              <-- server alias name (use this as ServerName in connection string)
+    master=tcp,IP,PORT   <-- primary connection
+    query=tcp,IP,PORT    <-- query connection (same as master for IQ)
+
+If you need to connect to a different server later, just add another block:
+    [otherserver]
+    master=tcp,192.168.x.x,2640
+    query=tcp,192.168.x.x,2640
+
+
+--------------------------------------------------------------------------------
+STEP 5 — Install pyodbc
+--------------------------------------------------------------------------------
+    pip install pyodbc
+
+
+--------------------------------------------------------------------------------
+STEP 6 — Connect from Python
+--------------------------------------------------------------------------------
+
+    import pyodbc
+    import os
+
+    # Make sure Windows can find the DLLs
+    os.environ['PATH'] = r'C:\DataDirect\SybaseIQ;' + os.environ.get('PATH', '')
+
+    conn_str = (
+        "DRIVER={DataDirect 8.0 Sybase IQ};"
+        "ServerName=dwhdb;"                                         # must match [section] in sql.ini
+        "InterfacesFile=C:\\DataDirect\\SybaseIQ\\ini\\sql.ini;"   # path to sql.ini
+        "Database=dwhdb;"                                           # database name (use "Database" NOT "DatabaseName")
+        "LogonID=dcbo;"                                             # username
+        "Password=Ericsson@123;"                                    # password
+    )
+
+    conn = pyodbc.connect(conn_str, timeout=10)
+    cursor = conn.cursor()
+    cursor.execute("SELECT @@version")
+    print(cursor.fetchone()[0])
+    conn.close()
+
+
+--------------------------------------------------------------------------------
+IMPORTANT NOTES
+--------------------------------------------------------------------------------
+
+1. Use "Database" NOT "DatabaseName" in the connection string.
+   "DatabaseName" returns "No database name was specified" error.
+
+2. Always set os.environ['PATH'] to include the DLL folder before importing pyodbc,
+   OR permanently add C:\DataDirect\SybaseIQ to your Windows System PATH.
+
+3. The InterfacesFile must point to the sql.ini file explicitly.
+   Setting the SYBASE environment variable alone does NOT work reliably.
+
+4. The installer (.exe) requires Java 11+ (NOT Java 8).
+   If you only have Java 8, use the manual DLL extraction method (Step 2).
+
+5. The driver DLLs extracted manually work fine without the full installer.
+   You only need: ddsyiq28.dll, ddsyiq28r.dll, ddicu.dll
+
+6. Server info for reference:
+       Host    : etbjeniq1.moov.bj / 10.22.65.52
+       Port    : 2640
+       Database: dwhdb
+       User    : dcbo
+       Version : SAP IQ/16.1.050.1886 SP05.01 (Linux 64-bit)
+
+
+--------------------------------------------------------------------------------
+FILES SUMMARY
+--------------------------------------------------------------------------------
+
+C:\DataDirect\SybaseIQ\
+    ddsyiq28.dll        DataDirect Sybase IQ Wire Protocol Driver
+    ddsyiq28r.dll       Driver resource file
+    ddicu.dll           Unicode library dependency
+    ini\
+        sql.ini         Server name -> IP:port mapping file
+
+================================================================================

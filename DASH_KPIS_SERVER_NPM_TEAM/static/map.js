@@ -11,6 +11,7 @@ const END_DATE   = urlParams.get('end_date')   || '';
 const LEVEL      = urlParams.get('level')      || 'cell_name';
 const TIME_START = urlParams.get('time_start') || '';
 const TIME_END   = urlParams.get('time_end')   || '';
+const CA_TOKEN   = urlParams.get('ca_token')   || ''; // CA_LOCK — passed from parent tab
 
 // ── KPI column mapping per vendor ─────────────────────────────────────────────
 const KPI_COLS = {
@@ -294,7 +295,9 @@ async function fetchCells(script) {
   if (TIME_START) params.set('time_start', TIME_START);
   if (TIME_END)   params.set('time_end',   TIME_END);
 
-  const res  = await fetch('/api/worst-cells?' + params.toString());
+  const res  = await fetch('/api/worst-cells?' + params.toString(), {
+    headers: { 'X-CA-Token': CA_TOKEN }
+  });
   const json = await res.json();
   if (!res.ok) throw new Error(json.detail || 'API error');
   return json.data || [];

@@ -914,8 +914,8 @@ function renderPacketLossChart(data) {
 
 // CA_LOCK — password gate for CSSR Analysis. Remove the block below to disable.
 const CA_LOCK_KEY = 'ca_unlocked';
-const CA_LOCK_PWD = 'NPM';
-function caIsUnlocked() { return sessionStorage.getItem(CA_LOCK_KEY) === '1'; }
+const CA_LOCK_PWD = 'NPM_TEAM';
+function caIsUnlocked() { return sessionStorage.getItem(CA_LOCK_KEY) === CA_LOCK_PWD; }
 function caShowLock(onSuccess) {
     const overlay = document.getElementById('ca-lock-overlay');
     const input   = document.getElementById('ca-lock-input');
@@ -926,7 +926,7 @@ function caShowLock(onSuccess) {
     input.focus();
     const submit = () => {
         if (input.value === CA_LOCK_PWD) {
-            sessionStorage.setItem(CA_LOCK_KEY, '1');
+            sessionStorage.setItem(CA_LOCK_KEY, CA_LOCK_PWD);
             overlay.style.display = 'none';
             cleanup();
             onSuccess();
@@ -1070,7 +1070,15 @@ async function fetchWorstCells(script, startDate, endDate, level, timeStart, tim
     if (timeStart) params.set('time_start', timeStart);
     if (timeEnd)   params.set('time_end',   timeEnd);
 
-    const res  = await fetch('/api/worst-cells?' + params.toString(), { signal });
+    const res  = await fetch('/api/worst-cells?' + params.toString(), {
+        signal,
+        headers: { 'X-CA-Token': sessionStorage.getItem(CA_LOCK_KEY) || '' }
+    });
+    if (res.status === 401) {
+        sessionStorage.removeItem(CA_LOCK_KEY);
+        caShowLock(() => loadCssrAnalysis());
+        throw new Error('Unauthorized');
+    }
     const json = await res.json();
     if (!res.ok) throw new Error(json.detail || 'API error');
     return json.data || [];
@@ -1445,6 +1453,10 @@ function openCssrMap() {
     });
     if (timeStart) params.set('time_start', timeStart);
     if (timeEnd)   params.set('time_end',   timeEnd);
+    // CA_LOCK — pass token so the new tab can authenticate
+    const token = sessionStorage.getItem(CA_LOCK_KEY) || '';
+    if (token) params.set('ca_token', token);
+    // /CA_LOCK
 
     window.open('/map?' + params.toString(), '_blank');
 }
