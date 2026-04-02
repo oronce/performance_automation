@@ -1097,7 +1097,7 @@ function loadCssrAnalysis() {
 
     const diffDays = (new Date(endDate) - new Date(startDate)) / 86400000;
     if (diffDays < 0) { showError('Start date must be before end date'); return; }
-    if (diffDays > 2) { showError('CSSR Analysis: max range is 3 days'); return; }
+    if (diffDays > 7) { showError('CSSR Analysis: max range is 8 days'); return; }
 
     const timeStart = document.getElementById('ca-time-start').value || null;
     const timeEnd   = document.getElementById('ca-time-end').value   || null;
